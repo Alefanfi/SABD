@@ -1,8 +1,10 @@
 version: '2'
 
 services:
-    spark-master:
+
+    spark:
         image: docker.io/bitnami/spark:3
+        restart: always
         environment:
             - SPARK_MODE=master
             - SPARK_RPC_AUTHENTICATION_ENABLED=no
@@ -17,10 +19,43 @@ services:
         image: docker.io/bitnami/spark:3
         environment:
             - SPARK_MODE=worker
-            - SPARK_MASTER_URL=spark://spark-master:7077
+            - SPARK_MASTER_URL=spark://spark:7077
             - SPARK_WORKER_MEMORY=1G
             - SPARK_WORKER_CORES=1
             - SPARK_RPC_AUTHENTICATION_ENABLED=no
             - SPARK_RPC_ENCRYPTION_ENABLED=no
             - SPARK_LOCAL_STORAGE_ENCRYPTION_ENABLED=no
             - SPARK_SSL_ENABLED=no
+        depends_on:
+            -   spark
+        expose:
+            -   '8081'
+            -   '7077'
+
+    namenode:
+        image: bde2020/hadoop-namenode:2.0.0-hadoop3.2.1-java8
+        container_name: namenode
+        restart: always
+        ports:
+            - '9870:9870'
+            - '9000:9000'
+        volumes:
+            - hadoop_namenode:/hadoop/dfs/name
+        environment:
+            - CLUSTER_NAME=test
+            - CORE_CONF_fs_defaultFS=hdfs://namenode:9000
+
+    datanode:
+        image: bde2020/hadoop-datanode:2.0.0-hadoop3.2.1-java8
+        container_name: datanode
+        restart: always
+        volumes:
+            - hadoop_datanode:/hadoop/dfs/data
+        environment:
+            - CORE_CONF_fs_defaultFS=hdfs://namenode:9000
+        depends_on:
+            -   namenode
+
+volumes:
+    hadoop_namenode:
+    hadoop_datanode:
