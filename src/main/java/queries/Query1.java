@@ -37,7 +37,7 @@ public class Query1 {
 
  */
 
-        String outputPath = "hdfs://namenode:9000/output/";
+        String outputPath = "hdfs://namenode:9000/spark/output5";
         if (args.length > 0)
             outputPath = args[0];
 
