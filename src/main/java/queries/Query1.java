@@ -30,6 +30,7 @@ public class Query1 {
 
         log.info("Starting processing query1");
 
+        //Create dataset from file parquet
         Dataset<Row> allrow = spark.read().parquet(inputPath);
         JavaRDD<Row> rdd = allrow.toJavaRDD();
 
