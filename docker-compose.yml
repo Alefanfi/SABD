@@ -72,7 +72,7 @@ services:
             - '9090:8080' # Web ui port
         volumes:
             - ./nifi:/nifi_config/
-            - nifi_volume:/conf/
+            - nifi_volume:/opt/nifi/nifi-current/conf/
 
 #-----------------------------------------------------------------------------------------------------------------------
 volumes:
