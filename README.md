@@ -15,7 +15,7 @@ This project uses docker and docker-compose to instantiate the HDFS, Spark and N
 
 ## Deployment
 
-    docker-compose up --scale spark-worker=3 datanode=4
+    docker-compose up --scale spark-worker=3 --scale datanode=4
 
 Using the docker-compose command you can scale worker nodes as you please.
 
