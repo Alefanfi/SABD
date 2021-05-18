@@ -72,6 +72,8 @@ public class Query1 {
 
         //out.saveAsTextFile(outputPath);
 
+        //Ordinare i risultati
+
         List<Tuple2<Tuple2<String, String>, Long>> result = out.collect();
         log.info("Result:");
         for (Tuple2<Tuple2<String, String>, Long> value: result) {
