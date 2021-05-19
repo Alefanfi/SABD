@@ -26,5 +26,8 @@ public class Query3 {
         //Create dataset from file parquet "somministrazione-vaccini-summary.parquet"
         Dataset<Row> row = spark.read().parquet(pathHDFS + inputPath);
         JavaRDD<Row> rdd = row.toJavaRDD();
+
+
+        spark.close();
     }
 }

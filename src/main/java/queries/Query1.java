@@ -40,21 +40,23 @@ public class Query1 {
         Dataset<Row> row = spark.read().parquet(pathHDFS + inputPath);
         JavaRDD<Row> rdd = row.toJavaRDD();
 
+        //Elimino i dati relativi al mese di dicembre 2020
         JavaRDD<Row> rrd_2021 = rdd.filter(x -> new SimpleDateFormat("yyyy-MM-dd").parse(x.getString(0)).after(start_date));
 
         //JavaPairRDD can be used for operations which require an explicit Key field.
+        /*I valori vengono ordinati secondo la data (il giorno viene impostato sempre come il primo giorno del mese
+        * tanto abbiamo bisogno dei valori che riguardano tutti i giorni di un determinato mese)*/
         JavaPairRDD<Date, Tuple2<String, Long>> summary = rrd_2021.mapToPair((x -> {
-            Date date = new SimpleDateFormat("yyyy-MM-dd").parse(x.getString(0));
+            Date date = new SimpleDateFormat("yyyy-MM").parse(x.getString(0));
             Long total = Long.valueOf(x.getString(2));
             return new Tuple2<>(date, new Tuple2<>(x.getString(1), total));
         })).sortByKey(true).cache();
 
-        JavaPairRDD<Tuple2<Date, String>, Long> meseArea = summary.mapToPair((x) -> {
-            Calendar cal = Calendar.getInstance();
-            cal.setTime(x._1);
-            cal.set(Calendar.DAY_OF_MONTH, 1);
-            return new Tuple2<>(new Tuple2<>(cal.getTime(), x._2._1), x._2._2);
-        }).reduceByKey(Long::sum);
+        /*Modificata la chiava, posta uguale alla coppia Data+Regione
+        *Vengono raggruppati i valori relativi alle persone vaccinate per un determinato mese e una determinata regione*/
+        JavaPairRDD<Tuple2<Date, String>, Long> meseArea = summary.mapToPair((x) ->
+                new Tuple2<>(new Tuple2<>(x._1, x._2._1), x._2._2)).reduceByKey(Long::sum);
+
 
         JavaPairRDD<String, Tuple2<Date, Long>> area = meseArea.mapToPair((x) ->
                 new Tuple2<>(x._1._2, new Tuple2<>(x._1._1, x._2)));
@@ -68,10 +70,8 @@ public class Query1 {
 
         JavaPairRDD<String, Tuple2<Tuple2<Date, Long>, Integer>> meseAreaCentri = area.join(centri);
 
-        JavaPairRDD<Tuple2<Date, String>, Long> out = meseAreaCentri.mapToPair((x ->{
-            //String convertedDate = new SimpleDateFormat("yyyy-MM-dd").format(x._2._1._1);
-            return new Tuple2<>(new Tuple2<>(x._2._1._1, x._1), x._2._1._2/x._2._2);
-        })).sortByKey(comp);
+        JavaPairRDD<Tuple2<Date, String>, Long> out = meseAreaCentri.mapToPair((x ->
+                new Tuple2<>(new Tuple2<>(x._2._1._1, x._1), x._2._1._2/x._2._2))).sortByKey(comp);
 
         JavaPairRDD<Tuple2<String, String>, Long> out2 = out.mapToPair((x ->{
             String convertedDate = new SimpleDateFormat("yyyy-MM-dd").format(x._1._1);
