@@ -28,7 +28,10 @@ On the first deployment of the cluster you can import the templates to use in ni
     
     /nifi/templates
 
-## Submitting queries
+## Query submission
+
+    mvn package    
+
 To submit a query to the spark cluster you can use the scripts in the folder /scripts in the root of the project.
 
     sh submit_query.sh 1

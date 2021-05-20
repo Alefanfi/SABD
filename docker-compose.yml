@@ -33,9 +33,6 @@ services:
             - SPARK_SSL_ENABLED=no
         depends_on:
             -   spark
-        expose:
-            -   '8081'
-            -   '7077'
 
 # HDFS -----------------------------------------------------------------------------------------------------------------
 
@@ -74,8 +71,45 @@ services:
             - ./nifi:/nifi_config/
             - nifi_volume:/opt/nifi/nifi-current/conf/
 
+# REDIS ----------------------------------------------------------------------------------------------------------------
+
+    redis-master:
+        image: bitnami/redis:latest
+        ports:
+            - '6379:6379'
+        environment:
+            - REDIS_REPLICATION_MODE=master
+            - ALLOW_EMPTY_PASSWORD=yes
+        volumes:
+            - redis_volume:/bitnami
+
+    redis-replica:
+        image: bitnami/redis:latest
+        ports:
+            - '6379'
+        depends_on:
+            - redis-master
+        environment:
+            - REDIS_REPLICATION_MODE=slave
+            - REDIS_MASTER_HOST=redis-master
+            - REDIS_MASTER_PORT_NUMBER=6379
+            - ALLOW_EMPTY_PASSWORD=yes
+
+# GRAFANA --------------------------------------------------------------------------------------------------------------
+
+    grafana:
+        image: grafana/grafana:latest
+        container_name: grafana
+        environment:
+            - GF_INSTALL_PLUGINS=redis-datasource
+        ports:
+            - '3000:3000'
+        user: "104"
+
 #-----------------------------------------------------------------------------------------------------------------------
+
 volumes:
+    redis_volume:
     nifi_volume:
     hadoop_namenode:
     hadoop_datanode:
