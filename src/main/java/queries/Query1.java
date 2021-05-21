@@ -10,6 +10,8 @@ import scala.Tuple2;
 
 import java.text.ParseException;
 import java.text.SimpleDateFormat;
+import java.time.Duration;
+import java.time.Instant;
 import java.util.*;
 
 public class Query1 {
@@ -29,15 +31,17 @@ public class Query1 {
 
         SparkSession spark = SparkSession
                 .builder()
-                .appName("Prova")
+                .appName("Query 1")
                 .master("spark://spark:7077")
                 .getOrCreate();
 
         log.info("Processing query 1");
 
+        Instant start = Instant.now();
+
         //Create dataset from file parquet "somministrazione-vaccini-summary.parquet"
         Dataset<Row> row = spark.read().parquet(vaccini_summary);
-        JavaRDD<Row> rdd = row.toJavaRDD();
+        JavaRDD<Row> rdd = row.toJavaRDD().cache();
 
         JavaPairRDD<String, Tuple2<Date, Long>> vaccini = rdd
                 .filter(x -> year_month_day_format.parse(x.getString(0)).after(start_date)) // data_somministrazione > 2020-12-31
@@ -80,6 +84,10 @@ public class Query1 {
                 .selectExpr("key as anno_mese", "value._1 as regione", "value._2 as media_vaccinazioni");
 
         output_dt.write().mode(SaveMode.Overwrite).parquet(outputPath);
+
+        Instant end = Instant.now();
+        log.info("Query completed in " + Duration.between(start, end).toMillis() + " ms");
+
         spark.close();
 
 /*

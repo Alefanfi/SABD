@@ -13,6 +13,7 @@ import java.io.Serializable;
 import java.text.ParseException;
 
 import java.text.SimpleDateFormat;
+import java.time.LocalDateTime;
 import java.util.*;
 
 public class Query2 {
@@ -27,12 +28,15 @@ public class Query2 {
 
     public static void main(String[] args) throws ParseException {
 
+        SimpleDateFormat year_month_day_format = new SimpleDateFormat("yyyy-MM-dd");
+
+        //Create dataset from file parquet "somministrazione-vaccini.parquet"
         Date start_date = new SimpleDateFormat("yyyy-MM-dd").parse("2021-1-31");
         Tuple3Comparator<Date, String, String> comp = new Tuple3Comparator<>(Comparator.<Date>naturalOrder(), Comparator.<String>naturalOrder(), Comparator.<String>naturalOrder());
 
         SparkSession spark = SparkSession
                 .builder()
-                .appName("Query2")
+                .appName("Query 2")
                 .master("spark://spark:7077")
                 .getOrCreate();
 
@@ -113,9 +117,9 @@ public class Query2 {
       /*
 
         // Meglio farlo con i dataset ? Nella linear regression si può passare solo un dataset
+        /*
         dataset.filter(dataset.col("data_somministrazione").gt(start_date))
                 .select("data_somministrazione","nome_area", "fascia_anagrafica", "sesso_femminile");
-
 
         LinearRegression lr = new LinearRegression()
                 .setMaxIter(10)
