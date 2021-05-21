@@ -71,18 +71,22 @@ public class Query1 {
                     x -> {
                         String date = new SimpleDateFormat("yyyy-MM").format(x._2._1._1);
                         Double mean = Double.valueOf(x._2._1._2)/x._2._2;   // Mean number of vaccinations per center
-                        return new Tuple2<>(new Tuple2<>(date, x._1), mean); // (date, (region_name, mean))
+                        return new Tuple2<>(new Tuple2<>(date, x._1), mean); // ((date, region_name), mean)
                     })
-                .sortByKey(comp, true);
+                .sortByKey(comp, true); // Ordering by date and region_name
 
 
         Encoder<Tuple2<Tuple2<String, String>, Double>> encoder = Encoders.tuple(Encoders.tuple(Encoders.STRING(), Encoders.STRING()), Encoders.DOUBLE());
 
         Dataset<Row> output_dt = spark.createDataset(JavaPairRDD.toRDD(output), encoder)
                 .toDF("key", "value")
-                .selectExpr("key as anno_mese", "value._1 as regione", "value._2 as media_vaccinazioni");
+                .selectExpr("key._1 as anno_mese", "key._2 as regione", "value as media_vaccinazioni");
 
         output_dt.write().mode(SaveMode.Overwrite).parquet(outputPath);
+
+        Instant end = Instant.now();
+        log.info("Query completed in " + Duration.between(start, end).toMillis() + " ms");
+
         spark.close();
 
     }
