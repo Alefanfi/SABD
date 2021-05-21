@@ -10,6 +10,8 @@ import scala.Tuple2;
 
 import java.text.ParseException;
 import java.text.SimpleDateFormat;
+import java.time.Duration;
+import java.time.Instant;
 import java.util.*;
 
 public class Query1 {
@@ -23,7 +25,7 @@ public class Query1 {
 
         SimpleDateFormat year_month_day_format = new SimpleDateFormat("yyyy-MM-dd");
         SimpleDateFormat year_month_format = new SimpleDateFormat("yyyy-MM");
-        TupleComparator<Date, String> comp = new TupleComparator<>(Comparator.<Date>naturalOrder(), Comparator.<String>naturalOrder());
+        TupleComparator<String, String> comp = new TupleComparator<>(Comparator.<String>naturalOrder(), Comparator.<String>naturalOrder());
 
         Date start_date = year_month_day_format.parse("2020-12-31");
 
@@ -35,9 +37,11 @@ public class Query1 {
 
         log.info("Processing query 1");
 
+        Instant start = Instant.now();
+
         //Create dataset from file parquet "somministrazione-vaccini-summary.parquet"
         Dataset<Row> row = spark.read().parquet(vaccini_summary);
-        JavaRDD<Row> rdd = row.toJavaRDD();
+        JavaRDD<Row> rdd = row.toJavaRDD().cache();
 
         JavaPairRDD<String, Tuple2<Date, Long>> vaccini = rdd
                 .filter(x -> year_month_day_format.parse(x.getString(0)).after(start_date)) // data_somministrazione > 2020-12-31
@@ -49,7 +53,6 @@ public class Query1 {
                         return new Tuple2<>(key, total); // ((date, region_name), num_vaccinated_people)
                     })
                 .reduceByKey(Long::sum) // Adding up the number of people vaccinated in a region during a specific month
-                .sortByKey(comp,true) // Order by date and region
                 .mapToPair(x -> new Tuple2<>(x._1._2, new Tuple2<>(x._1._1, x._2))); // (region_name, (date, num_vaccinated_people))
 
 
@@ -62,73 +65,27 @@ public class Query1 {
                 .reduceByKey(Integer::sum);  // Adding up the number of vaccination centers in a single region
 
 
-        JavaPairRDD<String, Tuple2<String, Double>> output = vaccini
+        JavaPairRDD<Tuple2<String, String>, Double> output = vaccini
                 .join(centri)   // Joining with centri by region_name (region_name,((date, num_vaccinated_people), num_vac_centers))
                 .mapToPair(
                     x -> {
                         String date = new SimpleDateFormat("yyyy-MM").format(x._2._1._1);
                         Double mean = Double.valueOf(x._2._1._2)/x._2._2;   // Mean number of vaccinations per center
-                        return new Tuple2<>(date, new Tuple2<>(x._1, mean)); // (date, (region_name, mean))
-                    });
+                        return new Tuple2<>(new Tuple2<>(date, x._1), mean); // (date, (region_name, mean))
+                    })
+                .sortByKey(comp, true);
 
 
-
-        Encoder<Tuple2<String, Tuple2<String, Double>>> encoder = Encoders.tuple(Encoders.STRING(),Encoders.tuple(Encoders.STRING(), Encoders.DOUBLE()));
+        Encoder<Tuple2<Tuple2<String, String>, Double>> encoder = Encoders.tuple(Encoders.tuple(Encoders.STRING(), Encoders.STRING()), Encoders.DOUBLE());
 
         Dataset<Row> output_dt = spark.createDataset(JavaPairRDD.toRDD(output), encoder)
                 .toDF("key", "value")
-                .selectExpr("key as anno_mese", "value._1 as regione", "value._2 as media_vaccinazioni");
+                .selectExpr("key._1 as anno_mese", "key._2 as regione", "value as media_vaccinazioni");
 
         output_dt.write().mode(SaveMode.Overwrite).parquet(outputPath);
+        Instant end = Instant.now();
+        log.info("Completed in " + Duration.between(start, end).toMillis() + " ms");
         spark.close();
-
-/*
-        JavaRDD<Row> rrd_2021 = rdd
-                .filter(x -> new SimpleDateFormat("yyyy-MM-dd").parse(x.getString(0)).after(start_date)); // data_somministrazione > 2020-12-31
-
-
-        //I valori vengono ordinati secondo la data (il giorno viene impostato sempre come il primo giorno del mese
-        //tanto abbiamo bisogno dei valori che riguardano tutti i giorni di un determinato mese)
-        JavaPairRDD<Date, Tuple2<String, Long>> summary = rrd_2021.mapToPair((x -> {
-            Date date = new SimpleDateFormat("yyyy-MM").parse(x.getString(0));
-            Long total = Long.valueOf(x.getString(2));
-            return new Tuple2<>(date, new Tuple2<>(x.getString(1), total));
-        })).sortByKey(true).cache();
-
-        //Modificata la chiave, posta uguale alla coppia Data+Regione
-        //Vengono raggruppati i valori relativi alle persone vaccinate per un determinato mese e una determinata regione
-        JavaPairRDD<Tuple2<Date, String>, Long> meseArea = summary.mapToPair((x) ->
-                new Tuple2<>(new Tuple2<>(x._1, x._2._1), x._2._2)).reduceByKey(Long::sum);
-
-        JavaPairRDD<String, Tuple2<Date, Long>> area = meseArea.mapToPair((x) ->
-                new Tuple2<>(x._1._2, new Tuple2<>(x._1._1, x._2)));
-
-
-
-        JavaPairRDD<String, Integer> centri = rdd2
-                .mapToPair((x) -> new Tuple2<>(x.getString(0), 1)).reduceByKey(Integer::sum); // ( region_name , 1 )
-
-        JavaPairRDD<String, Tuple2<Tuple2<Date, Long>, Integer>> meseAreaCentri = area.join(centri);
-
-        JavaPairRDD<Tuple2<Date, String>, Long> out = meseAreaCentri.mapToPair((x ->
-                new Tuple2<>(new Tuple2<>(x._2._1._1, x._1), x._2._1._2/x._2._2))).sortByKey(comp);
-
-        JavaPairRDD<Tuple2<String, String>, Long> out2 = out.mapToPair((x ->{
-            String convertedDate = new SimpleDateFormat("yyyy-MM-dd").format(x._1._1);
-            return new Tuple2<>(new Tuple2<>(convertedDate, x._1._2), x._2);
-        }));
-
-
-
-        List<Tuple2<Tuple2<String, String>, Long>> result = out2.collect();
-        log.info("Result:");
-        for (Tuple2<Tuple2<String, String>, Long> value: result) {
-            log.info(value);
-        }
-
-        out2.saveAsTextFile(outputPath);
-
-         */
 
     }
 }
