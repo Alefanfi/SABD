@@ -82,6 +82,7 @@ public class Query1 {
                 .toDF("key", "value")
                 .selectExpr("key._1 as anno_mese", "key._2 as regione", "value as media_vaccinazioni");
 
+
         output_dt.write().mode(SaveMode.Overwrite).parquet(outputPath);
 
         Instant end = Instant.now();
