@@ -85,9 +85,9 @@ public class Query3 {
 
             Encoder<Tuple2<java.sql.Date, Long>> encoder = Encoders.tuple(Encoders.DATE(), Encoders.LONG());
 
-            Dataset<Row> regression_dt = spark.createDataset(JavaPairRDD.toRDD(region_rdd), encoder)
+            /*Dataset<Row> regression_dt = spark.createDataset(JavaPairRDD.toRDD(region_rdd), encoder)
                     .toDF("key", "value")
-                    .selectExpr("key as datae", "value as vaccini");
+                    .selectExpr("key as datae", "value as vaccini");*/
 
 
 
