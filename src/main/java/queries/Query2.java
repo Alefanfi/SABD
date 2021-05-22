@@ -4,7 +4,9 @@ import org.apache.log4j.LogManager;
 import org.apache.log4j.Logger;
 import org.apache.spark.api.java.JavaPairRDD;
 import org.apache.spark.api.java.JavaRDD;
-import org.apache.spark.api.java.function.PairFunction;
+import org.apache.spark.api.java.JavaSparkContext;
+import org.apache.spark.api.java.function.PairFlatMapFunction;
+import org.apache.spark.broadcast.Broadcast;
 import org.apache.spark.sql.*;
 import scala.Tuple2;
 import scala.Tuple3;
@@ -13,125 +15,97 @@ import java.io.Serializable;
 import java.text.ParseException;
 
 import java.text.SimpleDateFormat;
-import java.time.LocalDateTime;
 import java.util.*;
 
 public class Query2 {
 
     private static final String outputPath = "hdfs://namenode:9000/spark/query2/";
     private static final String inputPath = "hdfs://namenode:9000/data/somministrazione-vaccini.parquet";
-
     private static final Logger log = LogManager.getLogger(Query2.class.getName());
-    //private static final DateTimeFormatter directory_formatter = DateTimeFormatter.ofPattern("yyyy-MM-dd/HH-mm");
-    //private static final DateTimeFormatter date_formatter = DateTimeFormatter.ofPattern("yyyy-MM-dd");
-    //private static final Date start_date = Date.valueOf("2021-1-31");
 
     public static void main(String[] args) throws ParseException {
 
         SimpleDateFormat year_month_day_format = new SimpleDateFormat("yyyy-MM-dd");
-
-        //Create dataset from file parquet "somministrazione-vaccini.parquet"
-        Date start_date = new SimpleDateFormat("yyyy-MM-dd").parse("2021-1-31");
-        Tuple3Comparator<Date, String, String> comp = new Tuple3Comparator<>(Comparator.<Date>naturalOrder(), Comparator.<String>naturalOrder(), Comparator.<String>naturalOrder());
+        SimpleDateFormat year_month_format = new SimpleDateFormat("yyyy-MM");
+        Date start_date = year_month_day_format.parse("2021-1-31");
+        Tuple3Comparator<String, String, String> comp = new Tuple3Comparator<>(Comparator.<String>naturalOrder(), Comparator.<String>naturalOrder(), Comparator.<String>naturalOrder());
 
         SparkSession spark = SparkSession
                 .builder()
-                .appName("Query 2")
+                .appName("Query2")
                 .master("spark://spark:7077")
                 .getOrCreate();
+        JavaSparkContext sc = JavaSparkContext.fromSparkContext(spark.sparkContext());
 
 
         Dataset<Row> dataset = spark.read().parquet(inputPath);
         JavaRDD<Row> rdd = dataset.toJavaRDD();
 
-        /*
-        JavaPairRDD<String, Iterable<Row>> grouped_rdd = rdd
-                .filter(row -> Date.valueOf(row.getString(0)).after(start_date))
+        JavaPairRDD<Tuple3<String, String, String>, Tuple2<String, Long>> grouped_rdd = rdd
+                .filter(row -> new SimpleDateFormat("yyyy-MM-dd").parse(row.getString(0)).after(start_date)) //filter date
                 .mapToPair(row -> {
+                    Date date = year_month_day_format.parse(row.getString(0));
+                    return new Tuple2<>(new Tuple3<>(date, row.getString(2), row.getString(3)), Long.valueOf(row.getString(5))); //(date, region, age), num_vaccinated_women
+                }).reduceByKey(Long::sum) // Adding up the number of women vaccinated in a region during a specific date
+                .mapToPair(row -> {
+                    String month = year_month_format.format(row._1._1());
+                    String convertedDate = year_month_day_format.format(row._1._1());
+                    return new Tuple2<>(new Tuple3<>(month, row._1._2(), row._1._3()), new Tuple2<>(convertedDate, row._2)); //(month, region, age), (date, num_vaccinated_women)
+                }).groupByKey()
+                .flatMapToPair(
+                        (PairFlatMapFunction<Tuple2<Tuple3<String, String, String>, Iterable<Tuple2<String, Long>>>, Tuple3<String, String, String>, Tuple2<String, Long>>) input -> {
+                            String month = input._1._1();
+                            String regione = input._1._2();
+                            String fasciaAnagrafica = input._1._3();
+                            ArrayList<Tuple2<Tuple3<String, String, String>, Tuple2<String, Long>>> list = new ArrayList<>();
+                            for(Tuple2<String, Long> tupla: input._2()){
+                                Tuple2<Tuple3<String, String, String>, Tuple2<String, Long>> tmp =
+                                        new Tuple2<>(new Tuple3<>(month, regione, fasciaAnagrafica), new Tuple2<>(tupla._1, tupla._2));
+                                list.add(tmp);
+                            }
+                            return list.iterator();
+                        });
 
-                    LocalDate date = LocalDate.parse(row.getString(0), date_formatter);
-                    String key = date.getYear() + "_" + date.getMonthValue() + "_" + row.getString(1) + "_" + row.getString(2);
-                    Row value = RowFactory.create(row.getString(0), row.getString(1), row.getString(2), row.getString(4));
+        //Per la risoluzione della query, considerare le sole categorie per cui nel mese solare
+        // in esame vengono registrati almeno due giorni di campagna vaccinale.
 
-                    return new Tuple2<>(key, value);
+        JavaPairRDD<Tuple3<String, String, String>, Integer> x = grouped_rdd.keys().mapToPair(key -> new Tuple2<>(key, 1)).reduceByKey(Integer::sum);
+        Broadcast<List<Tuple3<String, String, String>>> noDuplicati = sc.broadcast(x.filter(row -> row._2 < 2).keys().collect());
 
-                })
-                .groupByKey();
+        grouped_rdd = grouped_rdd.filter(row -> !noDuplicati.value().contains(row._1)).sortByKey(comp, true);
 
-        List<Tuple2<String, Iterable<Row>>> result2 = grouped_rdd.collect();
-        for (Tuple2<String, Iterable<Row>> value: result2) {
-            log.info(value);
-        }*/
+        List<Tuple3<String, String, String>> keyList = grouped_rdd.groupByKey().sortByKey(comp, true).keys().collect();
 
-        JavaRDD<Row> parsedRDD = rdd.filter(row -> new SimpleDateFormat("yyyy-MM-dd").parse(row.getString(0)).after(start_date));
+        for (int i=0; i<keyList.size(); i++){
+            int index = i;
 
-        JavaPairRDD<Tuple3<Date, String, String>, Long> grouped_rdd = parsedRDD.mapToPair(row -> {
-            Date date = new SimpleDateFormat("yyyy-MM-dd").parse(row.getString(0));
-            return new Tuple2<>(new Tuple3<>(date, row.getString(1), row.getString(2)), Long.valueOf(row.getString(4)));
-        }).reduceByKey(Long::sum);
+            JavaPairRDD<Tuple3<String, String, String>, Tuple2<String, Long>> newRDD = grouped_rdd
+                    .filter(row -> row._1._1().equals(keyList.get(index)._1()) && row._1._2().equals(keyList.get(index)._2()) && row._1._3().equals(keyList.get(index)._3()));
 
-        JavaPairRDD<Tuple3<String, String, String>, Tuple2<String, Long>> mese = grouped_rdd.mapToPair(row ->{
-            Date date = row._1._1();
-            String month = new SimpleDateFormat("MM").format(date);
-            String convertedDate = new SimpleDateFormat("yyyy-MM-dd").format(row._1._1());
-            return new Tuple2<>(new Tuple3<>(month, row._1._2(), row._1._3()), new Tuple2<>(convertedDate, row._2));});
+            Encoder<Tuple2<Tuple3<String, String, String>, Tuple2<String, Long>>> encoder = Encoders.tuple(Encoders.tuple
+                    (Encoders.STRING(), Encoders.STRING(), Encoders.STRING()), Encoders.tuple(Encoders.STRING(), Encoders.LONG()));
 
-        JavaPairRDD<Tuple3<String, String, String>, Iterable<Tuple2<String, Long>>> mese2 = mese.groupByKey().filter(row -> {
-            Iterable<Tuple2<String, Long>> list = row._2;
-            int i = 0;
-            for(Tuple2<String, Long> x : list) {
-                i += 1;
-                if(i == 2){
-                    return true;
-                }
-            } return false; });
+            //Create Dataset
+            Dataset<Row> dt = spark.createDataset(JavaPairRDD.toRDD(newRDD), encoder)
+                    .toDF("key", "value");
+        }
 
-        JavaPairRDD<Tuple3<String, String, String>, Tuple2<String, Long>> meseWithoutIterable = mese2.mapToPair(
-                (PairFunction<Tuple2<Tuple3<String, String, String>, Iterable<Tuple2<String, Long>>>, Tuple3<String, String, String>, Tuple2<String, Long>>) input -> {
-                    String month = input._1._1();
-                    String regione = input._1._2();
-                    String fasciaAnagrafica = input._1._3();
-                    for(Tuple2<String, Long> tupla: input._2()){
-                        return new Tuple2<>(new Tuple3<>(month, regione, fasciaAnagrafica), new Tuple2<>(tupla._1(), tupla._2()));
-                    }
-                    return null;
-                }
-        );
 
-        Encoder<Tuple2<Tuple3<String, String, String>, Tuple2<String, Long>>> encoder = Encoders.tuple(Encoders.tuple
-                (Encoders.STRING(), Encoders.STRING(), Encoders.STRING()), Encoders.tuple(Encoders.STRING(), Encoders.LONG()));
+        //Dataset<Row> newDt = dt.selectExpr("key._1 as Mese", "key._2 as Regione", "key._3 as FasciaAnagrafica", "value._1 as Data", "value._2 as Totale");
 
-        Dataset<Row> dt = spark.createDataset(JavaPairRDD.toRDD(meseWithoutIterable), encoder)
-                .toDF("key", "value");
+        //newDt.show();
 
-        Dataset<Row> newDt = dt.selectExpr("key._1 as Mese", "key._2 as Regione", "key._3 as FasciaAnagrafica", "value._1 as Data", "value._2 as Totale");
+        //Dataset<Row> newDataset = dt.groupBy("key").agg(org.apache.spark.sql.functions.collect_list("key")).toDF("key","value");
 
-        newDt.show();
+        //newDataset.show();
 
-/*
-        //Regressione lineare
-        LinearRegression lr = new LinearRegression();
-        LinearRegressionModel model = lr.fit(newDt);
+        spark.close();
 
-*/
-      /*
-
-        // Meglio farlo con i dataset ? Nella linear regression si può passare solo un dataset
         /*
-        dataset.filter(dataset.col("data_somministrazione").gt(start_date))
-                .select("data_somministrazione","nome_area", "fascia_anagrafica", "sesso_femminile");
-
-        LinearRegression lr = new LinearRegression()
-                .setMaxIter(10)
-                .setRegParam(0.3)
-                .setElasticNetParam(0.8);
-
-
         String path = outputPath.concat(LocalDateTime.now().format(directory_formatter));
         log.info(path);
         //grouped_rdd.saveAsTextFile(path);*/
 
-        spark.close();
     }
 }
 
