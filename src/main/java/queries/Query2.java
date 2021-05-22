@@ -7,6 +7,10 @@ import org.apache.spark.api.java.JavaRDD;
 import org.apache.spark.api.java.JavaSparkContext;
 import org.apache.spark.api.java.function.PairFlatMapFunction;
 import org.apache.spark.broadcast.Broadcast;
+import org.apache.spark.ml.feature.VectorAssembler;
+import org.apache.spark.ml.linalg.Vectors;
+import org.apache.spark.ml.regression.LinearRegression;
+import org.apache.spark.ml.regression.LinearRegressionModel;
 import org.apache.spark.sql.*;
 import scala.Tuple2;
 import scala.Tuple3;
@@ -19,7 +23,7 @@ import java.util.*;
 
 public class Query2 {
 
-    private static final String outputPath = "hdfs://namenode:9000/spark/query2/";
+    //private static final String outputPath = "hdfs://namenode:9000/spark/query2/";
     private static final String inputPath = "hdfs://namenode:9000/data/somministrazione-vaccini.parquet";
     private static final Logger log = LogManager.getLogger(Query2.class.getName());
 
@@ -29,6 +33,8 @@ public class Query2 {
         SimpleDateFormat year_month_format = new SimpleDateFormat("yyyy-MM");
         Date start_date = year_month_day_format.parse("2021-1-31");
         Tuple3Comparator<String, String, String> comp = new Tuple3Comparator<>(Comparator.<String>naturalOrder(), Comparator.<String>naturalOrder(), Comparator.<String>naturalOrder());
+        Tuple3Comparator<String, String, Long> comp2 = new Tuple3Comparator<>(Comparator.<String>naturalOrder(), Comparator.<String>naturalOrder(), Comparator.<Long>naturalOrder());
+
 
         SparkSession spark = SparkSession
                 .builder()
@@ -37,12 +43,11 @@ public class Query2 {
                 .getOrCreate();
         JavaSparkContext sc = JavaSparkContext.fromSparkContext(spark.sparkContext());
 
-
         Dataset<Row> dataset = spark.read().parquet(inputPath);
         JavaRDD<Row> rdd = dataset.toJavaRDD();
 
         JavaPairRDD<Tuple3<String, String, String>, Tuple2<String, Long>> grouped_rdd = rdd
-                .filter(row -> new SimpleDateFormat("yyyy-MM-dd").parse(row.getString(0)).after(start_date)) //filter date
+                .filter(row -> year_month_day_format.parse(row.getString(0)).after(start_date)) //filter date
                 .mapToPair(row -> {
                     Date date = year_month_day_format.parse(row.getString(0));
                     return new Tuple2<>(new Tuple3<>(date, row.getString(2), row.getString(3)), Long.valueOf(row.getString(5))); //(date, region, age), num_vaccinated_women
@@ -76,35 +81,93 @@ public class Query2 {
 
         List<Tuple3<String, String, String>> keyList = grouped_rdd.groupByKey().sortByKey(comp, true).keys().collect();
 
+        List<Tuple2<Long, Tuple3<String, String, String>>> prediction = new ArrayList<>();
+
         for (int i=0; i<keyList.size(); i++){
             int index = i;
 
-            JavaPairRDD<Tuple3<String, String, String>, Tuple2<String, Long>> newRDD = grouped_rdd
-                    .filter(row -> row._1._1().equals(keyList.get(index)._1()) && row._1._2().equals(keyList.get(index)._2()) && row._1._3().equals(keyList.get(index)._3()));
+            //Per ogni chiave mi costruisco il JavaPairRDD, così da considerare ogni volta solamente uno specifico mese
+            // una specifica regione e una specifica fascia d'età
+            JavaPairRDD<Tuple3<String, String, String>, Tuple2<Long, Long>> newRDD = grouped_rdd
+                    .filter(row -> row._1._1().equals(keyList.get(index)._1()) && row._1._2().equals(keyList.get(index)._2())
+                            && row._1._3().equals(keyList.get(index)._3()))
+                    .mapToPair(row -> {
+                        Date date = year_month_day_format.parse(row._2._1());
+                        Long dateLong = date.getTime();
+                        return new Tuple2<>(new Tuple3<>(row._1._1(), row._1._2(), row._1._3()), new Tuple2<>(dateLong, row._2._2()));
+                    });
 
-            Encoder<Tuple2<Tuple3<String, String, String>, Tuple2<String, Long>>> encoder = Encoders.tuple(Encoders.tuple
-                    (Encoders.STRING(), Encoders.STRING(), Encoders.STRING()), Encoders.tuple(Encoders.STRING(), Encoders.LONG()));
+            Encoder<Tuple2<Tuple3<String, String, String>, Tuple2<Long, Long>>> encoder = Encoders.tuple(Encoders.tuple
+                    (Encoders.STRING(), Encoders.STRING(), Encoders.STRING()), Encoders.tuple(Encoders.LONG(), Encoders.LONG()));
 
             //Create Dataset
             Dataset<Row> dt = spark.createDataset(JavaPairRDD.toRDD(newRDD), encoder)
                     .toDF("key", "value");
+
+            Dataset<Row> newDt = dt.selectExpr("key._1 as Mese", "key._2 as Regione", "key._3 as FasciaAnagrafica", "value._1 as Data", "value._2 as Vaccini");
+
+            VectorAssembler assembler = new VectorAssembler()
+                    .setInputCols(new String[]{"Data"})
+                    .setOutputCol("Features");
+
+            Dataset<Row> training = assembler.transform(newDt);
+
+            //Definisco la regressione lineare
+            LinearRegression lr = new LinearRegression()
+                    .setMaxIter(10)
+                    .setRegParam(0.3)
+                    .setElasticNetParam(0.8)
+                    .setFeaturesCol("Features")
+                    .setLabelCol("Vaccini");
+
+            // Fit the model.
+            LinearRegressionModel lrModel = lr.fit(training);
+
+            //Definisco quale è il mese successivo per il quale devoeffettuare il calcolo
+            Date date = year_month_format.parse(keyList.get(0)._1()+"-"+"01");
+            Calendar cal = Calendar.getInstance();
+            cal.setTime(date);
+            cal.add(Calendar.MONTH, 1);
+            String d = year_month_day_format.format(cal.getTime());
+
+            long day = year_month_day_format.parse(d).getTime(); //Definisco il giorno per cui devo effettuare la predizione
+
+            double predict = lrModel.predict(Vectors.dense(day)); //predico il numero di vaccinati per il primo giorno del mese successivo
+
+            //Salvo il valore ottenuto in una lista
+            prediction.add(new Tuple2<>((long) predict, new Tuple3<>(d, keyList.get(index)._2(), keyList.get(index)._3())));
+
         }
 
+        for(Tuple2<Long, Tuple3<String, String, String>> l : prediction ){
+            log.info(l);
+        }
 
-        //Dataset<Row> newDt = dt.selectExpr("key._1 as Mese", "key._2 as Regione", "key._3 as FasciaAnagrafica", "value._1 as Data", "value._2 as Totale");
+        Encoder<Tuple2<Long, Tuple3<String, String, String>>> encoder2 = Encoders.tuple(Encoders.LONG(), Encoders.tuple
+                (Encoders.STRING(), Encoders.STRING(), Encoders.STRING()));
 
-        //newDt.show();
+        Dataset<Row> predictDT = spark.createDataset(prediction, encoder2).toDF("key", "value")
+                .selectExpr("key as Vaccini_Predetti",  "value._1 as Date", "value._2 as Area", "value._3 Age")
+                /*.drop("Vaccini_Predetti", "Area")*/;
 
-        //Dataset<Row> newDataset = dt.groupBy("key").agg(org.apache.spark.sql.functions.collect_list("key")).toDF("key","value");
+        JavaRDD<Row> predictRow = predictDT.toJavaRDD();
 
-        //newDataset.show();
+        JavaPairRDD<Tuple3<String, String, Long>, String> predictPairRDD = predictRow.mapToPair(row ->{
+            Long predictLong = Long.valueOf(row.getString(0));
+            return new Tuple2<>(new Tuple3<>(row.getString(1), row.getString(3), predictLong), row.getString(2));
+        }).sortByKey();
+
+
+
+
+
+
+
+
+
+
 
         spark.close();
-
-        /*
-        String path = outputPath.concat(LocalDateTime.now().format(directory_formatter));
-        log.info(path);
-        //grouped_rdd.saveAsTextFile(path);*/
 
     }
 }
