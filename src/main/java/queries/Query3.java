@@ -6,6 +6,8 @@ import org.apache.log4j.LogManager;
 import org.apache.log4j.Logger;
 import org.apache.spark.api.java.JavaPairRDD;
 import org.apache.spark.api.java.JavaRDD;
+import org.apache.spark.ml.clustering.BisectingKMeans;
+import org.apache.spark.ml.clustering.BisectingKMeansModel;
 import org.apache.spark.ml.clustering.KMeans;
 import org.apache.spark.ml.clustering.KMeansModel;
 import org.apache.spark.ml.evaluation.ClusteringEvaluator;
@@ -24,6 +26,7 @@ import java.text.SimpleDateFormat;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.Calendar;
 import java.util.Date;
 import java.util.List;
 
@@ -31,14 +34,18 @@ public class Query3 {
 
     private static final String vaccini_summary = "hdfs://namenode:9000/data/somministrazione-vaccini-summary.parquet";
     private static final String tot_popolazione = "hdfs://namenode:9000/data/totale-popolazione.parquet";
-    private static final String outputPath = "hdfs://namenode:9000/spark/query3";
+    private static final String outputPath = "hdfs://namenode:9000/spark/query3/";
     private static final Logger log = LogManager.getLogger(Query3.class.getName());
 
     public static void main(String[] args ) throws ParseException {
 
         SimpleDateFormat year_month_day_format = new SimpleDateFormat("yyyy-MM-dd");
         Date start_date = year_month_day_format.parse("2020-12-26");
-        Date tomorrow = year_month_day_format.parse(Instant.now().toString());
+
+        // Tomorrow
+        Calendar calendar = Calendar.getInstance();
+        calendar.add(Calendar.DAY_OF_YEAR, 1);
+        Date tomorrow = calendar.getTime();
 
         SparkSession spark = SparkSession
                 .builder()
@@ -134,7 +141,8 @@ public class Query3 {
                         x -> {
                             Double percent = (((double) x._2._1._1 + x._2._1._2)/x._2._2)*100;
                             return new Tuple2<>(x._1, percent); // (region, percent_vaccinated)
-                        });
+                        })
+                .sortByKey(); // Order by region name
 
         Encoder<Tuple2<String, Double>> encoder = Encoders.tuple(Encoders.STRING(), Encoders.DOUBLE());
 
@@ -149,18 +157,28 @@ public class Query3 {
         Dataset<Row> output = assembler.transform(output_dt);
 
         // Trains a k-means model.
-        KMeans kmeans = new KMeans().setK(4).setSeed(1L);
+        KMeans kmeans = new KMeans().setK(2).setSeed(1L);
         KMeansModel model = kmeans.fit(output);
 
         // Make predictions
         Dataset<Row> predictions = model
                 .transform(output)  // predicting clusters
-                .select("regione", "percentuale_vaccinati", "prediction") // Selecting output data columns
-                .orderBy("regione"); // Ordering by region name
+                .select("regione", "percentuale_vaccinati", "prediction"); // Selecting output data columns
 
-        predictions.show();
+        // Trains a bisecting k-means model.
+        BisectingKMeans bkm = new BisectingKMeans().setK(2).setSeed(1);
+        BisectingKMeansModel bmodel = bkm.fit(output);
 
-        predictions.write().mode(SaveMode.Overwrite).parquet(outputPath);
+        // Make predictions
+        Dataset<Row> bpredictions = bmodel
+                .transform(output) // predicting clusters
+                .select("regione", "percentuale_vaccinati", "prediction"); // Selecting output data columns
+
+
+
+        // Writing results to HDFS
+        predictions.write().mode(SaveMode.Overwrite).option("header", "true").csv(outputPath +"kmeans/"+ year_month_day_format.format(tomorrow));
+        bpredictions.write().mode(SaveMode.Overwrite).option("header", "true").csv(outputPath +"biseckmeans/"+ year_month_day_format.format(tomorrow));
 
         Instant end = Instant.now();
         log.info("Query completed in " + Duration.between(start, end).toMillis() + " ms");

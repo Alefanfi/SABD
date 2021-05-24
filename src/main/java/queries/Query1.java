@@ -16,7 +16,7 @@ import java.util.*;
 
 public class Query1 {
 
-    private static final String outputPath = "hdfs://namenode:9000/spark/query1";
+    private static final String outputPath = "hdfs://namenode:9000/spark/query1/";
     private static final String vaccini_summary = "hdfs://namenode:9000/data/somministrazione-vaccini-summary.parquet";
     private static final String punti_somministrazione = "hdfs://namenode:9000/data/punti-somministrazione.parquet";
     private static final Logger log = LogManager.getLogger(Query1.class.getName());
@@ -83,7 +83,7 @@ public class Query1 {
                 .selectExpr("key._1 as anno_mese", "key._2 as regione", "value as media_vaccinazioni");
 
 
-        output_dt.write().mode(SaveMode.Overwrite).parquet(outputPath);
+        output_dt.write().mode(SaveMode.Overwrite).option("header", "true").csv(outputPath);
 
         Instant end = Instant.now();
         log.info("Query completed in " + Duration.between(start, end).toMillis() + " ms");

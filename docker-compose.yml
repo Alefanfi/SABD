@@ -25,7 +25,7 @@ services:
         environment:
             - SPARK_MODE=worker
             - SPARK_MASTER_URL=spark://spark:7077
-            - SPARK_WORKER_MEMORY=1g
+            - SPARK_WORKER_MEMORY=2g
             - SPARK_WORKER_CORES=1
             - SPARK_RPC_AUTHENTICATION_ENABLED=no
             - SPARK_RPC_ENCRYPTION_ENABLED=no
@@ -73,27 +73,18 @@ services:
 
 # REDIS ----------------------------------------------------------------------------------------------------------------
 
-    redis-master:
-        image: bitnami/redis:latest
+    redis:
+        image: docker.io/bitnami/redis:6.2
+        container_name: redis
+        environment:
+            # ALLOW_EMPTY_PASSWORD is recommended only for development.
+            - ALLOW_EMPTY_PASSWORD=yes
+            - REDIS_DISABLE_COMMANDS=FLUSHDB,FLUSHALL
         ports:
             - '6379:6379'
-        environment:
-            - REDIS_REPLICATION_MODE=master
-            - ALLOW_EMPTY_PASSWORD=yes
         volumes:
-            - redis_volume:/bitnami
+            - redis_data:/bitnami/redis/data
 
-    redis-replica:
-        image: bitnami/redis:latest
-        ports:
-            - '6379'
-        depends_on:
-            - redis-master
-        environment:
-            - REDIS_REPLICATION_MODE=slave
-            - REDIS_MASTER_HOST=redis-master
-            - REDIS_MASTER_PORT_NUMBER=6379
-            - ALLOW_EMPTY_PASSWORD=yes
 
 # GRAFANA --------------------------------------------------------------------------------------------------------------
 
@@ -101,15 +92,17 @@ services:
         image: grafana/grafana:latest
         container_name: grafana
         environment:
-            - GF_INSTALL_PLUGINS=redis-datasource
+            - GF_INSTALL_PLUGINS=redis-datasource, marcusolsson-csv-datasource
         ports:
             - '3000:3000'
         user: "104"
+        volumes:
+            - ./output:/csv/
 
 #-----------------------------------------------------------------------------------------------------------------------
 
 volumes:
-    redis_volume:
+    redis_data:
     nifi_volume:
     hadoop_namenode:
     hadoop_datanode:
