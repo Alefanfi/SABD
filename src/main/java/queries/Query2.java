@@ -23,7 +23,7 @@ import java.util.*;
 
 public class Query2 {
 
-    //private static final String outputPath = "hdfs://namenode:9000/spark/query2/";
+    private static final String outputPath = "hdfs://namenode:9000/spark/query2/";
     private static final String inputPath = "hdfs://namenode:9000/data/somministrazione-vaccini.parquet";
     private static final Logger log = LogManager.getLogger(Query2.class.getName());
 
@@ -77,7 +77,7 @@ public class Query2 {
 
         List<Tuple2<Long, Tuple3<String, String, String>>> prediction = new ArrayList<>(); //lista in cui aggiungere le predizioni finali per ogni (mese, età, regione)
 
-        for (int i=0; i<27; i++){
+        for (int i=0; i<keyList.size(); i++){
             int index = i;
 
             log.info("Iterazione " + index);
@@ -165,9 +165,11 @@ public class Query2 {
 
         Encoder<Tuple4<String, String, Integer, String>> encoder3 = Encoders.tuple(Encoders.STRING(), Encoders.STRING(), Encoders.INT(), Encoders.STRING());
 
-        Dataset<Row> dataset3 = spark.createDataset(risultatiFinai, encoder3).toDF("Date", "Age", "Prediction", "Area");
+        Dataset<Row> output_dt = spark.createDataset(risultatiFinai, encoder3).toDF("Date", "Age", "Prediction", "Area");
 
-        dataset3.show();
+        output_dt.show();
+
+        output_dt.write().mode(SaveMode.Overwrite).parquet(outputPath);
 
         spark.close();
 
