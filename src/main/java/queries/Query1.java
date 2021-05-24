@@ -19,6 +19,7 @@ public class Query1 {
     private static final String outputPath = "hdfs://namenode:9000/spark/query1/";
     private static final String vaccini_summary = "hdfs://namenode:9000/data/somministrazione-vaccini-summary.parquet";
     private static final String punti_somministrazione = "hdfs://namenode:9000/data/punti-somministrazione.parquet";
+
     private static final Logger log = LogManager.getLogger(Query1.class.getName());
 
     public static void main(String[] args ) throws ParseException {
@@ -43,7 +44,7 @@ public class Query1 {
         Dataset<Row> row = spark.read().parquet(vaccini_summary);
         JavaRDD<Row> rdd = row.toJavaRDD().cache();
 
-        JavaPairRDD<String, Tuple2<Date, Long>> vaccini = rdd
+        JavaPairRDD<String, Tuple2<Date, Double>> vaccini = rdd
                 .filter(x -> year_month_day_format.parse(x.getString(0)).after(start_date)) // data_somministrazione > 2020-12-31
                 .mapToPair(
                     x -> {
@@ -53,7 +54,17 @@ public class Query1 {
                         return new Tuple2<>(key, total); // ((date, region_name), num_vaccinated_people)
                     })
                 .reduceByKey(Long::sum) // Adding up the number of people vaccinated in a region during a specific month
-                .mapToPair(x -> new Tuple2<>(x._1._2, new Tuple2<>(x._1._1, x._2))); // (region_name, (date, num_vaccinated_people))
+                .mapToPair(
+                    x -> {
+                        Calendar calendar = Calendar.getInstance();
+                        calendar.setTime(x._1._1);
+
+                        int days = calendar.getActualMaximum(Calendar.DAY_OF_MONTH); // Number of days in the month
+
+                        Double mean = (double) x._2/days; // Mean number of vaccinations per day
+
+                        return new Tuple2<>(x._1._2, new Tuple2<>(x._1._1, mean)); // (region_name, (date, num_vaccinated_people_by_day))
+                    });
 
 
         //Create dataset from file parquet "punti-somministrazione.parquet"
@@ -70,8 +81,7 @@ public class Query1 {
                 .mapToPair(
                     x -> {
                         String date = new SimpleDateFormat("yyyy-MM").format(x._2._1._1);
-                        Double mean = Double.valueOf(x._2._1._2)/x._2._2;   // Mean number of vaccinations per center
-                        return new Tuple2<>(new Tuple2<>(date, x._1), mean); // ((date, region_name), mean)
+                        return new Tuple2<>(new Tuple2<>(date, x._1), x._2._1._2/x._2._2); // ((date, region_name), mean_vacc_center_day)
                     })
                 .sortByKey(comp, true); // Ordering by date and region_name
 

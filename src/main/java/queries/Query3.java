@@ -1,24 +1,18 @@
 package queries;
 
 import org.apache.commons.collections.IteratorUtils;
-import org.apache.hadoop.hdfs.protocol.proto.EncryptionZonesProtos;
 import org.apache.log4j.LogManager;
 import org.apache.log4j.Logger;
 import org.apache.spark.api.java.JavaPairRDD;
-import org.apache.spark.api.java.JavaRDD;
 import org.apache.spark.ml.clustering.BisectingKMeans;
 import org.apache.spark.ml.clustering.BisectingKMeansModel;
 import org.apache.spark.ml.clustering.KMeans;
 import org.apache.spark.ml.clustering.KMeansModel;
-import org.apache.spark.ml.evaluation.ClusteringEvaluator;
-import org.apache.spark.ml.feature.Tokenizer;
 import org.apache.spark.ml.feature.VectorAssembler;
-import org.apache.spark.ml.linalg.Vector;
 import org.apache.spark.ml.linalg.Vectors;
 import org.apache.spark.ml.regression.LinearRegression;
 import org.apache.spark.ml.regression.LinearRegressionModel;
 import org.apache.spark.sql.*;
-import org.apache.spark.sql.types.*;
 import scala.Tuple2;
 
 import java.text.ParseException;
@@ -35,6 +29,7 @@ public class Query3 {
     private static final String vaccini_summary = "hdfs://namenode:9000/data/somministrazione-vaccini-summary.parquet";
     private static final String tot_popolazione = "hdfs://namenode:9000/data/totale-popolazione.parquet";
     private static final String outputPath = "hdfs://namenode:9000/spark/query3/";
+
     private static final Logger log = LogManager.getLogger(Query3.class.getName());
 
     public static void main(String[] args ) throws ParseException {
@@ -90,7 +85,7 @@ public class Query3 {
 
         // Summing up total vaccinations
         JavaPairRDD<String, Long> tot_vac = vacc_rdd
-                .mapToPair( x -> new Tuple2<>(x._1, x._2._2)) // (regior, number_of_vaccinations)
+                .mapToPair( x -> new Tuple2<>(x._1, x._2._2)) // (region, number_of_vaccinations)
                 .reduceByKey(Long::sum); // summing up total of vaccinations for a region
 
 
@@ -119,7 +114,7 @@ public class Query3 {
                     .setFeaturesCol("features")
                     .setLabelCol("vaccini");
 
-            // Fit the model.
+            // Fit the model
             LinearRegressionModel lrModel = lr.fit(training);
 
             //Predict tomorrow's vaccinations
@@ -132,11 +127,11 @@ public class Query3 {
         JavaPairRDD<String, Long> tomorrow_vacc_rdd = spark
                 .createDataset(tomorrow_vacc, Encoders.tuple(Encoders.STRING(), Encoders.LONG()))
                 .toJavaRDD()
-                .mapToPair( x -> new Tuple2<>(x._1, x._2));
+                .mapToPair( x -> new Tuple2<>(x._1, x._2)); // (region, num_vacc_tomorrow)
 
         JavaPairRDD<String, Double> vacc_pop = tot_vac
                 .join(tomorrow_vacc_rdd) // (region, (tot_vacc, tomorrow_vacc))
-                .join(popolazione) // Joining with popolazione by region (region, ((tot_vacc, tomorrow_vacc), population))
+                .join(popolazione) // (region, ((tot_vacc, tomorrow_vacc), population))
                 .mapToPair(
                         x -> {
                             Double percent = (((double) x._2._1._1 + x._2._1._2)/x._2._2)*100;

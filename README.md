@@ -2,7 +2,7 @@
 This project uses the Spark engine to analyze the data taken from the github repository of vaccinations in Italy against Covid 19 ([covid19-opendata-vaccini](https://github.com/italia/covid19-opendata-vaccini)).
 
 ## Requirements
-This project uses docker and docker-compose to instantiate the HDFS, Spark and Nifi containers.
+This project uses docker and docker-compose to instantiate the HDFS, Spark, Nifi and Redis containers.
 
 #### Docker links :
 * [docker download](https://www.docker.com/products/docker-desktop)
@@ -12,23 +12,26 @@ This project uses docker and docker-compose to instantiate the HDFS, Spark and N
 * [<img src="https://uploads-ssl.webflow.com/5abbd6c80ca1b5830c921e17/5ad766e2a1a548ee4fc61cf6_hadoop%20(1).png" width=70px>](https://hadoop.apache.org/docs/r1.2.1/hdfs_design.html)
 * [<img src="https://upload.wikimedia.org/wikipedia/commons/thumb/f/f3/Apache_Spark_logo.svg/1200px-Apache_Spark_logo.svg.png" width=70px>](https://spark.apache.org/)
 * [<img src="https://miro.medium.com/max/400/1*b-i9e82pUCgJbsg3lpdFnA.jpeg" width=70px>](https://nifi.apache.org/)
+* [<img src="https://upload.wikimedia.org/wikipedia/commons/thumb/6/6b/Redis_Logo.svg/1200px-Redis_Logo.svg.png" width=70px height=35px>](https://redis.io/)
 
 ## Deployment
 
     docker-compose up --scale spark-worker=3 --scale datanode=4
 
-Using the docker-compose command you can scale worker nodes as you please.
+Using the docker-compose command you can scale worker nodes as you please. In this example a cluster with 3 spark workers and 4 hdfs datanodes will be created.
 
 Each of the systems provides its web ui accessible at:
 * http://localhost:9870 &nbsp;&nbsp;&nbsp; hdfs namenode
 * http://localhost:8080 &nbsp;&nbsp;&nbsp; spark master
 * http://localhost:9090 &nbsp;&nbsp;&nbsp; nifi
 
-On the first deployment of the cluster you can import the templates to use in nifi using the web ui:
-    
+## Nifi configuration
+On the first deployment of the cluster you can import the templates to use in nifi saved in the folder:
+
     /nifi/templates
 
 ## Query submission
+First create the jar needed for the submission of the query running the following command:
 
     mvn package    
 
