@@ -100,6 +100,7 @@ public class Query1 {
 
         spark.close();
 
+
     }
 }
 
@@ -125,3 +126,5 @@ class TupleComparator<tuple1, tuple2> implements Comparator<Tuple2<tuple1, tuple
     }
 
 }
+
+
