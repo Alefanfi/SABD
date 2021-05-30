@@ -12,6 +12,14 @@ elif [[ $1 -eq 3 ]]
 then
   echo "Submitting query 3 to spark cluster"
   docker exec spark-master spark-submit --class "queries.Query3" --master "local" queries/SABD-1.0-SNAPSHOT.jar
+elif [[ $1 -eq 4 ]]
+then
+  echo "Submitting query sql 2 to spark cluster"
+  docker exec spark-master spark-submit --class "sql_queries.Query2" --master "local" queries/SABD-1.0-SNAPSHOT.jar
+elif [[ $1 -eq 5 ]]
+then
+  echo "Submitting query sql 3 to spark cluster"
+  docker exec spark-master spark-submit --class "sql_queries.Query3" --master "local" queries/SABD-1.0-SNAPSHOT.jar
 else
-  echo "Usage: sh query.sh query_number"
+  echo "Usage: sh submit_query.sh query_number"
 fi
