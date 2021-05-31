@@ -1,12 +1,17 @@
 package sql_queries;
 
+import org.apache.commons.collections.IteratorUtils;
 import org.apache.log4j.LogManager;
 import org.apache.log4j.Logger;
+import org.apache.spark.api.java.JavaPairRDD;
 import org.apache.spark.ml.feature.VectorAssembler;
 import org.apache.spark.ml.linalg.Vectors;
 import org.apache.spark.ml.regression.LinearRegression;
 import org.apache.spark.ml.regression.LinearRegressionModel;
 import org.apache.spark.sql.*;
+import queries.Tuple3Comparator;
+import scala.Tuple2;
+import scala.Tuple3;
 import scala.Tuple4;
 
 import java.text.ParseException;
@@ -66,16 +71,11 @@ public class Query2 {
                 .stream()
                 .map(r -> r.getString(0)).sorted(String.CASE_INSENSITIVE_ORDER).collect(Collectors.toList());
 
-        List<Tuple4<String, String, String, Double>> prediction = new ArrayList<>();
+        List<Tuple4<String, String, String, Long>> prediction = new ArrayList<>();
 
-        for (int index = 0; index < keyString.size(); index++) {
+        for (String s : keyString) {
 
-            log.info("-------------------------------------------------------------------------------------------------" +
-                    "--------------------------------------------------------------------------------------- " + keyString.get(index));
-
-            Dataset<Row> dt = sqlDF.filter(sqlDF.col("key").equalTo(keyString.get(index)));
-
-            dt.show();
+            Dataset<Row> dt = sqlDF.filter(sqlDF.col("key").equalTo(s));
 
             VectorAssembler assembler = new VectorAssembler()
                     .setInputCols(new String[]{"data_somministrazione"})
@@ -92,7 +92,7 @@ public class Query2 {
             LinearRegressionModel lrModel = lr.fit(assembler.transform(dt));
 
             //Get current date
-            String[] tmp = keyString.get(index).split(" ");
+            String[] tmp = s.split(" ");
             Date date = year_month_day_format.parse("01-0" + tmp[0]);
 
             // Get next month for prediction
@@ -105,20 +105,52 @@ public class Query2 {
             // Predict women vaccinations the first day of the next month
             double predict = lrModel.predict(Vectors.dense(newdate.getTime()));
 
-            prediction.add(new Tuple4<>(newdateString, tmp[2], tmp[4], predict));
-
-
-            log.info("_____________________________________________________________________________________");
+            prediction.add(new Tuple4<>(newdateString, tmp[2], tmp[4], (long) predict));
 
         }
 
-        for(Tuple4<String, String, String, Double> m : prediction){
-            log.info(m);
-        }
+        Encoder<Tuple4<String, String, String, Long>> encoder = Encoders.tuple(Encoders.STRING(),
+                Encoders.STRING(), Encoders.STRING(), Encoders.LONG());
 
-        Encoder<Tuple4<String, String, String, Double>> encoder = Encoders.tuple(Encoders.STRING(),
-                Encoders.STRING(), Encoders.STRING(), Encoders.DOUBLE());
+        JavaPairRDD<Tuple3<String, String, Integer>, String> predictRDD = spark
+                .createDataset(prediction, encoder)
+                .toDF("Date", "Age", "Area", "Vaccini")
+                .toJavaRDD()
+                .mapToPair(
+                        row ->
+                                new Tuple2<>(new Tuple2<>(row.getString(1), row.getString(2)), new Tuple2<>( row.getLong(0), row.getString(3))) // ((year_month, age),(num_women_vacc, region))
+                )
+                .groupByKey() // ((year_month, age), [](num_women_vacc, region))
+                .flatMapToPair(
+                        x -> {
 
+                            List<Tuple2<Long,String>> scores = IteratorUtils.toList(x._2.iterator());
+                            scores.sort(Comparator.comparing(n -> n._1)); // Sorting by num_women_vacc
+                            Collections.reverse(scores);
+
+                            List<Tuple2<Tuple3<String, String, Integer>, String>> newlist = new ArrayList<>();
+
+                            String date = x._1._1;
+                            String age = x._1._2;
+
+                            for(int i=0; i<5; i++){
+
+                                Tuple2<Long, String> tupla = scores.get(i);
+
+                                newlist.add(new Tuple2<>(new Tuple3<>(date, age, tupla._1.intValue()), tupla._2)); // ((year_month, age, num_women_vacc), region)
+                            }
+                            return newlist.iterator();
+                        })
+                .sortByKey(new Tuple3Comparator<>(Comparator.<String>naturalOrder(), Comparator.<String>naturalOrder(), Comparator.<Integer>reverseOrder()), true); // Sorts by date, age and num_women_vacc
+
+        Encoder<Tuple2<Tuple3<String, String, Integer>, String>> encoder2 = Encoders.tuple(Encoders.tuple
+                (Encoders.STRING(), Encoders.STRING(), Encoders.INT()), Encoders.STRING());
+
+        Dataset<Row> output_dt = spark.createDataset(JavaPairRDD.toRDD(predictRDD), encoder2)
+                .toDF("key", "value")
+                .selectExpr("key._1 as date", "key._2 as age", "value as region", "key._3 as vacc_women");
+
+        output_dt.write().mode(SaveMode.Overwrite).option("header","true").csv(outputPath);
 
         spark.close();
     }
