@@ -52,6 +52,9 @@ public class Query2 {
                         sqlDF.col("fascia_anagrafica"), functions.lit(" - "), sqlDF.col("nome_area")))
                 .withColumn("data_somministrazione", sqlDF.col("data_somministrazione").cast("timestamp").cast("long"))
                 .withColumn("vaccini", sqlDF.col("sum(sesso_femminile)").cast("long"))
+                .drop(sqlDF.col("sum(sesso_femminile)"))
+                .drop(sqlDF.col("nome_area"))
+                .drop(sqlDF.col("fascia_amagrafoca"))
                 .sort("key", "data_somministrazione");
 
         sqlDF.show();
