@@ -82,22 +82,6 @@ services:
         volumes:
             - redis_data:/bitnami/redis/data
 
-
-# GRAFANA --------------------------------------------------------------------------------------------------------------
-
-    grafana:
-        image: grafana/grafana:latest
-        container_name: grafana
-        environment:
-            - GF_INSTALL_PLUGINS=redis-datasource, marcusolsson-csv-datasource
-        ports:
-            - '3000:3000'
-        user: "104"
-        volumes:
-            - ./output:/csv/
-
-#-----------------------------------------------------------------------------------------------------------------------
-
 volumes:
     redis_data:
     nifi_volume:

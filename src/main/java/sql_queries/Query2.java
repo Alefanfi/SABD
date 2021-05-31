@@ -6,19 +6,12 @@ import org.apache.spark.ml.feature.VectorAssembler;
 import org.apache.spark.ml.linalg.Vectors;
 import org.apache.spark.ml.regression.LinearRegression;
 import org.apache.spark.ml.regression.LinearRegressionModel;
-import org.apache.spark.sql.Dataset;
-import org.apache.spark.sql.Row;
-import org.apache.spark.sql.SparkSession;
-import org.apache.spark.sql.functions;
-import scala.Tuple2;
+import org.apache.spark.sql.*;
 import scala.Tuple4;
 
 import java.text.ParseException;
 import java.text.SimpleDateFormat;
-import java.util.ArrayList;
-import java.util.Calendar;
-import java.util.Date;
-import java.util.List;
+import java.util.*;
 import java.util.stream.Collectors;
 
 public class Query2 {
@@ -45,52 +38,58 @@ public class Query2 {
         Dataset<Row> sqlDF = spark.sql("SELECT data_somministrazione, nome_area, fascia_anagrafica, sesso_femminile " +
                 "FROM dati WHERE DATE(data_somministrazione) > DATE('2021-1-31')");
 
-        sqlDF = sqlDF.withColumn("sesso_femminile", sqlDF.col("sesso_femminile").cast("long"))
-                .groupBy("data_somministrazione", "nome_area", "fascia_anagrafica").sum("sesso_femminile");
+        sqlDF = sqlDF.withColumn("sesso_femminile", sqlDF.col("sesso_femminile").cast("int"))
+                .groupBy("data_somministrazione", "nome_area", "fascia_anagrafica")
+                .sum("sesso_femminile");
 
         sqlDF = sqlDF.withColumn("mese_anno", functions.concat(
-                functions.month(sqlDF.col("data_somministrazione")
-                ), functions.lit("-"), functions.year(sqlDF.col("data_somministrazione"))));
+                functions.month(sqlDF.col("data_somministrazione")),
+                functions.lit("-"),
+                functions.year(sqlDF.col("data_somministrazione"))));
 
         sqlDF = sqlDF.withColumn("key", functions
                 .concat(sqlDF.col("mese_anno"), functions.lit(" - "),
                         sqlDF.col("fascia_anagrafica"), functions.lit(" - "), sqlDF.col("nome_area")))
-                .sort("key");
+                .withColumn("data_somministrazione", sqlDF.col("data_somministrazione").cast("timestamp").cast("long"))
+                .withColumn("vaccini", sqlDF.col("sum(sesso_femminile)").cast("long"))
+                .sort("key", "data_somministrazione");
+
+        sqlDF.show();
 
         List<String> keyString = sqlDF
                 .select(sqlDF.col("key"))
                 .distinct()
                 .collectAsList()
                 .stream()
-                .map(r -> r.getString(0))
-                .collect(Collectors.toList());
+                .map(r -> r.getString(0)).sorted(String.CASE_INSENSITIVE_ORDER).collect(Collectors.toList());
 
         List<Tuple4<String, String, String, Double>> prediction = new ArrayList<>();
 
-        log.info("-------------------------------------------------------------------------" + keyString.size());
+        for (int index = 0; index < keyString.size(); index++) {
 
-        for (String s : keyString) {
+            log.info("-------------------------------------------------------------------------------------------------" +
+                    "--------------------------------------------------------------------------------------- " + keyString.get(index));
 
-            Dataset<Row> datasetLR = sqlDF.filter(sqlDF.col("key").equalTo(s))
-                    .withColumn("data_somministrazione", sqlDF.col("data_somministrazione").cast("timestamp").cast("long"))
-                    .sort("data_somministrazione");
+            Dataset<Row> dt = sqlDF.filter(sqlDF.col("key").equalTo(keyString.get(index)));
+
+            dt.show();
 
             VectorAssembler assembler = new VectorAssembler()
                     .setInputCols(new String[]{"data_somministrazione"})
                     .setOutputCol("features");
 
             LinearRegression lr = new LinearRegression()
-                    .setMaxIter(1)
+                    .setMaxIter(5)
                     .setRegParam(0.3)
                     .setElasticNetParam(0.8)
                     .setFeaturesCol("features")
-                    .setLabelCol("sum(sesso_femminile)");
+                    .setLabelCol("vaccini");
 
             // Fit the model
-            LinearRegressionModel lrModel = lr.fit(assembler.transform(datasetLR));
+            LinearRegressionModel lrModel = lr.fit(assembler.transform(dt));
 
             //Get current date
-            String[] tmp = s.split(" ");
+            String[] tmp = keyString.get(index).split(" ");
             Date date = year_month_day_format.parse("01-0" + tmp[0]);
 
             // Get next month for prediction
@@ -105,11 +104,17 @@ public class Query2 {
 
             prediction.add(new Tuple4<>(newdateString, tmp[2], tmp[4], predict));
 
+
+            log.info("_____________________________________________________________________________________");
+
         }
 
         for(Tuple4<String, String, String, Double> m : prediction){
             log.info(m);
         }
+
+        Encoder<Tuple4<String, String, String, Double>> encoder = Encoders.tuple(Encoders.STRING(),
+                Encoders.STRING(), Encoders.STRING(), Encoders.DOUBLE());
 
 
         spark.close();
