@@ -10,7 +10,7 @@ import org.apache.spark.sql.Dataset;
 import org.apache.spark.sql.Row;
 import org.apache.spark.sql.SparkSession;
 import org.apache.spark.sql.functions;
-import scala.Tuple2;
+
 import scala.Tuple4;
 
 import java.text.ParseException;
@@ -34,7 +34,7 @@ public class Query2 {
 
         SparkSession spark = SparkSession
                 .builder()
-                .appName("Query2")
+                .appName("SQL Query2")
                 .master("spark://spark:7077")
                 .getOrCreate();
 

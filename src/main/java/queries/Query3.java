@@ -24,9 +24,11 @@ public class Query3 {
     private static final String vaccini_summary = "hdfs://namenode:9000/data/somministrazione-vaccini-summary.parquet";
     private static final String tot_popolazione = "hdfs://namenode:9000/data/totale-popolazione.parquet";
     private static final String outputPath = "hdfs://namenode:9000/spark/query3/";
-    private static final  int k = 4; // Number of clusters
 
     public static void main(String[] args ) throws ParseException{
+
+        int algo = Integer.parseInt(args[0]); // Choosen algorithm
+        int k = Integer.parseInt(args[1]); // Number of clusters
 
         SimpleDateFormat year_month_day_format = new SimpleDateFormat("yyyy-MM-dd");
         Date start_date = year_month_day_format.parse("2020-12-26");
@@ -76,7 +78,7 @@ public class Query3 {
                 .mapToPair(
                         x -> {
                             Long num_vacc = Long.valueOf(x.getString(2));
-                            Long date = (long) year_month_day_format.parse(x.getString(0)).getTime();
+                            Long date = year_month_day_format.parse(x.getString(0)).getTime();
                             String region = x.getString(1).split("/")[0]; // Removing part of the region name after the /
                             return new Tuple2<>(region, new Tuple2<>(date, num_vacc)); // (region,(date, number_of_vaccinations))
                         })
@@ -114,28 +116,33 @@ public class Query3 {
 
         Dataset<Row> output = assembler.transform(output_dt);
 
-        // Trains a k-means model.
-        KMeans kmeans = new KMeans().setK(k).setSeed(1L);
-        KMeansModel model = kmeans.fit(output);
+        output.show();
 
-        // Make predictions
-        Dataset<Row> predictions = model
-                .transform(output)  // predicting clusters
-                .select("date","region", "percent", "prediction"); // Selecting output data columns
+        if(algo == 1){
 
-        // Trains a bisecting k-means model.
-        BisectingKMeans bkm = new BisectingKMeans().setK(k).setSeed(1);
-        BisectingKMeansModel bmodel = bkm.fit(output);
+            // Trains a bisecting k-means model.
+            BisectingKMeans bkm = new BisectingKMeans().setK(k).setSeed(1);
+            BisectingKMeansModel bmodel = bkm.fit(output);
 
-        // Make predictions
-        Dataset<Row> bpredictions = bmodel
-                .transform(output) // predicting clusters
-                .select("date","region", "percent", "prediction"); // Selecting output data columns
+            // Make predictions
+            Dataset<Row> bpredictions = bmodel
+                    .transform(output) // predicting clusters
+                    .select("date","region", "percent", "prediction"); // Selecting output data columns
 
+            bpredictions.write().mode(SaveMode.Overwrite).option("header", "true").csv(outputPath +"biseckmeans/");
+        }
+        else{
+            // Trains a k-means model.
+            KMeans kmeans = new KMeans().setK(k).setSeed(1L);
+            KMeansModel model = kmeans.fit(output);
 
-        // Writing results to HDFS
-        predictions.write().mode(SaveMode.Overwrite).option("header", "true").csv(outputPath +"kmeans/");
-        bpredictions.write().mode(SaveMode.Overwrite).option("header", "true").csv(outputPath +"biseckmeans/");
+            // Make predictions
+            Dataset<Row> predictions = model
+                    .transform(output)  // predicting clusters
+                    .select("date","region", "percent", "prediction"); // Selecting output data columns
+
+            predictions.write().mode(SaveMode.Overwrite).option("header", "true").csv(outputPath +"kmeans/");
+        }
 
         spark.close();
     }
