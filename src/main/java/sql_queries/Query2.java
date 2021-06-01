@@ -4,6 +4,7 @@ import comparator.Tuple3Comparator;
 import org.apache.commons.collections.IteratorUtils;
 import org.apache.commons.math3.stat.regression.SimpleRegression;
 import org.apache.spark.api.java.JavaPairRDD;
+import org.apache.spark.api.java.function.FlatMapFunction;
 import org.apache.spark.api.java.function.MapFunction;
 import org.apache.spark.sql.*;
 import org.apache.spark.sql.catalyst.encoders.RowEncoder;
@@ -20,6 +21,7 @@ import java.util.*;
 public class Query2 {
 
     private static final String inputPath = "hdfs://namenode:9000/data/somministrazione-vaccini.parquet";
+    private static final String outputPath = "hdfs://namenode:9000/spark/sql-query2/";
 
     public static void main(String[] args) {
 
@@ -27,7 +29,7 @@ public class Query2 {
 
         SparkSession spark = SparkSession
                 .builder()
-                .appName("Query2")
+                .appName("SQL Query2")
                 .master("spark://spark:7077")
                 .getOrCreate();
 
@@ -36,34 +38,36 @@ public class Query2 {
         dataset.createOrReplaceTempView("dati");
 
         //take all value after the 31-01-2021
-        Dataset<Row> sqlDF = spark.sql("SELECT data_somministrazione AS date, nome_area AS area, fascia_anagrafica AS age, sesso_femminile " +
+        Dataset<Row> sqlDF = spark.sql("SELECT data_somministrazione AS date, nome_area AS area, fascia_anagrafica AS age, CAST(sesso_femminile AS BIGINT) AS sesso_femminile " +
                 "FROM dati WHERE DATE(data_somministrazione) > DATE('2021-1-31')");
 
-        sqlDF = sqlDF.withColumn("sesso_femminile", sqlDF.col("sesso_femminile").cast("long"))
-                .groupBy("date", "area", "age")
-                .sum("sesso_femminile");
-
-        //create a new column with month and year value
-        sqlDF = sqlDF.withColumn("month_year", functions.concat(
-                functions.month(sqlDF.col("date")),
-                functions.lit("-"),
-                functions.year(sqlDF.col("date"))));
+        sqlDF = sqlDF
+                .groupBy("date", "area", "age") // Grouping by date, region and age
+                .sum("sesso_femminile")
+                .withColumn("month_year", functions
+                        //create a new column with month and year value
+                        .concat(
+                            functions.month(sqlDF.col("date")),
+                            functions.lit("-"),
+                            functions.year(sqlDF.col("date"))
+                        )
+                );
 
         StructType schema = DataTypes.createStructType(new StructField[] {
                 DataTypes.createStructField("date",  DataTypes.StringType, true),
                 DataTypes.createStructField("region",  DataTypes.StringType, true),
                 DataTypes.createStructField("age",  DataTypes.StringType, true),
-                DataTypes.createStructField("predicted", DataTypes.IntegerType, true)
+                DataTypes.createStructField("predicted", DataTypes.LongType, true)
         });
 
 
         Dataset<Row> prediction_dt = sqlDF
-                .withColumn("date", sqlDF.col("date").cast("timestamp").cast("long"))
+                .withColumn("date", sqlDF.col("date").cast("timestamp").cast("long")) // Casting column to long
                 .withColumn("vaccini", sqlDF.col("sum(sesso_femminile)").cast("long"))
-                .withColumn("value", functions.struct("date", "vaccini"))
+                .withColumn("value", functions.struct("date", "vaccini")) // (date, vacc)
                 .drop(sqlDF.col("sum(sesso_femminile)"))
                 .sort("month_year", "area", "age")
-                .groupBy("month_year", "area", "age")
+                .groupBy("month_year", "area", "age") // Grouping by month_year, region and age
                 .agg(functions.collect_list("value"))//(mont_year, area, age) [](data, vaccini)
                 .map((MapFunction<Row, Row>) row->{
 
@@ -80,12 +84,17 @@ public class Query2 {
                     Date nextMonth = cal.getTime();
                     String nextMonthString = year_month_day_format.format(nextMonth);
 
-                    double predict = simpleRegression.predict((double) nextMonth.getTime());
+                    Long predict = (long) simpleRegression.predict(nextMonth.getTime());
 
-                    return RowFactory.create(nextMonthString, row.getString(1), row.getString(2), (int) Math.round(predict)); //date, region, age, predict
+                    return RowFactory.create(nextMonthString, row.getString(1), row.getString(2), predict); // (date, region, age, predict)
 
-                }, RowEncoder.apply(schema));
+                }, RowEncoder.apply(schema))
+                .withColumn("vacc_region", functions.struct("predicted", "region")) // (date, region, age, predict, (predicted, age))
+                .groupBy("date", "age")
+                .agg(functions.collect_list("value")); // (date, age, [](predicted, age))
 
+
+        /*
         JavaPairRDD<Tuple3<String, String, Integer>, String> predict_rdd = prediction_dt
                 .toJavaRDD()
                 .mapToPair(
@@ -121,6 +130,8 @@ public class Query2 {
                 .selectExpr("key._1 as date", "key._2 as age", "value as region", "key._3 as vacc_women");
 
         output_dt.show();
+
+         */
 
         spark.close();
     }

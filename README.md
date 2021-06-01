@@ -52,4 +52,4 @@ The script takes one parameter specifying the query, e.g. 1 submits Query1.
 * http://localhost:9870 &nbsp;&nbsp;&nbsp; hdfs namenode
 * http://localhost:8080 &nbsp;&nbsp;&nbsp; spark master
 * http://localhost:4040 &nbsp;&nbsp;&nbsp; spark application
-* http://localhost:9090 &nbsp;&nbsp;&nbsp; nifi
+* http://localhost:9090/nifi &nbsp;&nbsp;&nbsp; nifi
