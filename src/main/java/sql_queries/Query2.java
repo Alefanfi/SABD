@@ -1,5 +1,7 @@
 package sql_queries;
 
+import comparator.Tuple3Comparator;
+
 import org.apache.commons.collections.IteratorUtils;
 import org.apache.log4j.LogManager;
 import org.apache.log4j.Logger;
@@ -9,7 +11,6 @@ import org.apache.spark.ml.linalg.Vectors;
 import org.apache.spark.ml.regression.LinearRegression;
 import org.apache.spark.ml.regression.LinearRegressionModel;
 import org.apache.spark.sql.*;
-import queries.Tuple3Comparator;
 import scala.Tuple2;
 import scala.Tuple3;
 import scala.Tuple4;
@@ -32,34 +33,36 @@ public class Query2 {
 
         SparkSession spark = SparkSession
                 .builder()
-                .appName("Query2")
+                .appName("SQL Query2")
                 .master("spark://spark:7077")
                 .getOrCreate();
 
         Dataset<Row> dataset = spark.read().parquet(inputPath);
 
-        dataset.createOrReplaceTempView("dati");
+        dataset.createOrReplaceTempView("data");
 
-        Dataset<Row> sqlDF = spark.sql("SELECT data_somministrazione, nome_area, fascia_anagrafica, sesso_femminile " +
-                "FROM dati WHERE DATE(data_somministrazione) > DATE('2021-1-31')");
+        Dataset<Row> sqlDF = spark.sql("SELECT data_somministrazione, nome_area, fascia_anagrafica, CAST(sesso_femminile AS INT) AS sesso_femminile " +
+                "FROM data WHERE DATE(data_somministrazione) > DATE('2021-1-31')");
 
-        sqlDF = sqlDF.withColumn("sesso_femminile", sqlDF.col("sesso_femminile").cast("int"))
-                .groupBy("data_somministrazione", "nome_area", "fascia_anagrafica")
-                .sum("sesso_femminile");
+        sqlDF = sqlDF
+                .groupBy("data_somministrazione", "nome_area", "fascia_anagrafica") // Grouping by date, region, age
+                .sum("sesso_femminile") // Sum up all vaccinations in a single day
+                .withColumn("mese_anno", functions.concat(
 
-        sqlDF = sqlDF.withColumn("mese_anno", functions.concat(
-                functions.month(sqlDF.col("data_somministrazione")),
-                functions.lit("-"),
-                functions.year(sqlDF.col("data_somministrazione"))));
+                    // Creating new column with only year and month of date
+                    functions.month(sqlDF.col("data_somministrazione")),
+                    functions.lit("-"),
+                    functions.year(sqlDF.col("data_somministrazione")))
+                )
+                .withColumn("key", functions.concat(
 
-        sqlDF = sqlDF.withColumn("key", functions
-                .concat(sqlDF.col("mese_anno"), functions.lit(" - "),
-                        sqlDF.col("fascia_anagrafica"), functions.lit(" - "), sqlDF.col("nome_area")))
-                .withColumn("data_somministrazione", sqlDF.col("data_somministrazione").cast("timestamp").cast("long"))
-                .withColumn("vaccini", sqlDF.col("sum(sesso_femminile)").cast("long"))
-                .drop(sqlDF.col("sum(sesso_femminile)"))
-                .drop(sqlDF.col("nome_area"))
-                .drop(sqlDF.col("fascia_amagrafoca"))
+                        // Creating key with date-age-region
+                        sqlDF.col("mese_anno"), functions.lit(" - "),
+                        sqlDF.col("fascia_anagrafica"), functions.lit(" - "), sqlDF.col("nome_area"))
+                )
+                .withColumn("data_somministrazione", sqlDF.col("data_somministrazione").cast("timestamp").cast("long")) // Casting date to long
+                .withColumn("vaccini", sqlDF.col("sum(sesso_femminile)").cast("long")) // Casting vacc number to long
+                .drop("sum(sesso_femminile)", "nome_area", "fascia_anagrafica")
                 .sort("key", "data_somministrazione");
 
         sqlDF.show();

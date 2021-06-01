@@ -1,8 +1,6 @@
 <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <template encoding-version="1.3">
-    <description>Takes data from the github repository at https://github.com/italia/covid19-opendata-vaccini
-and writes them in HDFS
-</description>
+    <description></description>
     <groupId>7fcf96ae-0179-1000-4431-1e2b594ec361</groupId>
     <name>input</name>
     <snippet>
@@ -37,11 +35,11 @@ and writes them in HDFS
             <backPressureObjectThreshold>10000</backPressureObjectThreshold>
             <bends>
                 <x>1695.35400390625</x>
-                <y>402.02490234375</y>
+                <y>400.5091552734375</y>
             </bends>
             <bends>
                 <x>1695.35400390625</x>
-                <y>450.02490234375</y>
+                <y>448.5091552734375</y>
             </bends>
             <destination>
                 <groupId>fffd26b2-34b6-382e-0000-000000000000</groupId>
@@ -749,14 +747,14 @@ and writes them in HDFS
             <parentGroupId>fffd26b2-34b6-382e-0000-000000000000</parentGroupId>
             <position>
                 <x>808.0</x>
-                <y>401.5157470703125</y>
+                <y>400.0</y>
             </position>
         </funnels>
         <processGroups>
             <id>01b71caf-0f5c-36bc-0000-000000000000</id>
             <parentGroupId>fffd26b2-34b6-382e-0000-000000000000</parentGroupId>
             <position>
-                <x>0.0</x>
+                <x>1.5157470703125</x>
                 <y>224.0</y>
             </position>
             <comments></comments>
@@ -984,8 +982,8 @@ and writes them in HDFS
                             </entry>
                         </properties>
                         <runDurationMillis>0</runDurationMillis>
-                        <schedulingPeriod>0 30 16 * * ?</schedulingPeriod>
-                        <schedulingStrategy>CRON_DRIVEN</schedulingStrategy>
+                        <schedulingPeriod>1 min</schedulingPeriod>
+                        <schedulingStrategy>TIMER_DRIVEN</schedulingStrategy>
                         <yieldDuration>1 sec</yieldDuration>
                     </config>
                     <executionNodeRestricted>false</executionNodeRestricted>
@@ -1138,7 +1136,7 @@ ORDER BY data_somministrazione ASC</value>
             <id>2bdedb4e-9951-3902-0000-000000000000</id>
             <parentGroupId>fffd26b2-34b6-382e-0000-000000000000</parentGroupId>
             <position>
-                <x>0.0</x>
+                <x>1.5157470703125</x>
                 <y>448.0</y>
             </position>
             <comments></comments>
@@ -1490,8 +1488,8 @@ FROM FLOWFILE</value>
                             </entry>
                         </properties>
                         <runDurationMillis>0</runDurationMillis>
-                        <schedulingPeriod>0 30 16 * * ?</schedulingPeriod>
-                        <schedulingStrategy>CRON_DRIVEN</schedulingStrategy>
+                        <schedulingPeriod>1 min</schedulingPeriod>
+                        <schedulingStrategy>TIMER_DRIVEN</schedulingStrategy>
                         <yieldDuration>1 sec</yieldDuration>
                     </config>
                     <executionNodeRestricted>false</executionNodeRestricted>
@@ -1519,7 +1517,7 @@ FROM FLOWFILE</value>
             <id>34d6600e-fad0-3145-0000-000000000000</id>
             <parentGroupId>fffd26b2-34b6-382e-0000-000000000000</parentGroupId>
             <position>
-                <x>0.0</x>
+                <x>1.5157470703125</x>
                 <y>0.0</y>
             </position>
             <comments></comments>
@@ -1871,8 +1869,8 @@ FROM FLOWFILE</value>
                             </entry>
                         </properties>
                         <runDurationMillis>0</runDurationMillis>
-                        <schedulingPeriod>0 30 16 * * ?</schedulingPeriod>
-                        <schedulingStrategy>CRON_DRIVEN</schedulingStrategy>
+                        <schedulingPeriod>1 min</schedulingPeriod>
+                        <schedulingStrategy>TIMER_DRIVEN</schedulingStrategy>
                         <yieldDuration>1 sec</yieldDuration>
                     </config>
                     <executionNodeRestricted>false</executionNodeRestricted>
@@ -2200,8 +2198,8 @@ FROM FLOWFILE</value>
                             </entry>
                         </properties>
                         <runDurationMillis>0</runDurationMillis>
-                        <schedulingPeriod>0 30 16 * * ?</schedulingPeriod>
-                        <schedulingStrategy>CRON_DRIVEN</schedulingStrategy>
+                        <schedulingPeriod>1 min</schedulingPeriod>
+                        <schedulingStrategy>TIMER_DRIVEN</schedulingStrategy>
                         <yieldDuration>1 sec</yieldDuration>
                     </config>
                     <executionNodeRestricted>false</executionNodeRestricted>
@@ -2230,7 +2228,7 @@ FROM FLOWFILE</value>
             <parentGroupId>fffd26b2-34b6-382e-0000-000000000000</parentGroupId>
             <position>
                 <x>1176.0</x>
-                <y>361.5157470703125</y>
+                <y>360.0</y>
             </position>
             <bundle>
                 <artifact>nifi-hadoop-nar</artifact>
@@ -2433,5 +2431,5 @@ FROM FLOWFILE</value>
             <type>org.apache.nifi.processors.hadoop.PutHDFS</type>
         </processors>
     </snippet>
-    <timestamp>05/27/2021 15:31:05 UTC</timestamp>
+    <timestamp>06/01/2021 15:08:06 UTC</timestamp>
 </template>

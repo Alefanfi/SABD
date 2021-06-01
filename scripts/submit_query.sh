@@ -21,5 +21,5 @@ then
   echo "Submitting query sql 3 to spark cluster"
   docker exec spark-master spark-submit --class "sql_queries.Query3" --master "local" queries/SABD-1.0-SNAPSHOT.jar $2 $3
 else
-  echo "Usage: sh submit_query.sh query_number arg"
+  echo "Usage: sh submit_query.sh query_number param_if_any"
 fi

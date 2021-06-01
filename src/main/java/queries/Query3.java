@@ -63,7 +63,6 @@ public class Query3 {
                 .toJavaRDD()
                 .filter(x -> year_month_day_format.parse(x.getString(0)).after(start_date)); // data_somministrazione > 2020-12-26
 
-
         JavaPairRDD<String, Long> vacc_rdd = vacc_summary
                 .mapToPair(
                         x ->{
@@ -116,8 +115,6 @@ public class Query3 {
 
         Dataset<Row> output = assembler.transform(output_dt);
 
-        output.show();
-
         if(algo == 1){
 
             // Trains a bisecting k-means model.
@@ -129,7 +126,7 @@ public class Query3 {
                     .transform(output) // predicting clusters
                     .select("date","region", "percent", "prediction"); // Selecting output data columns
 
-            bpredictions.write().mode(SaveMode.Overwrite).option("header", "true").csv(outputPath +"biseckmeans/");
+            bpredictions.write().mode(SaveMode.Overwrite).option("header", "true").csv(outputPath +"biseckmeans/" + k + "/");
         }
         else{
             // Trains a k-means model.
@@ -141,7 +138,7 @@ public class Query3 {
                     .transform(output)  // predicting clusters
                     .select("date","region", "percent", "prediction"); // Selecting output data columns
 
-            predictions.write().mode(SaveMode.Overwrite).option("header", "true").csv(outputPath +"kmeans/");
+            predictions.write().mode(SaveMode.Overwrite).option("header", "true").csv(outputPath +"kmeans/" + k + "/");
         }
 
         spark.close();

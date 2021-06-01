@@ -15,6 +15,7 @@ import org.apache.spark.sql.types.DataTypes;
 import org.apache.spark.sql.types.StructField;
 import org.apache.spark.sql.types.StructType;
 
+import java.text.ParseException;
 import java.text.SimpleDateFormat;
 import java.util.Calendar;
 import java.util.Date;
@@ -27,7 +28,7 @@ public class Query3 {
     private static final String outputPath = "hdfs://namenode:9000/spark/sql-query3/";
 
 
-    public static void main(String[] args ) {
+    public static void main(String[] args ) throws ParseException {
 
         int algo = Integer.parseInt(args[0]); // Choosen algorithm
         int k = Integer.parseInt(args[1]); // Number of clusters
@@ -49,13 +50,15 @@ public class Query3 {
         //Create dataset from file parquet "totale-popolazione.parquet"
         Dataset<Row> pop_dt = spark.read().parquet(tot_popolazione)
                 .toDF("region", "population") // (region, pop)
-                .withColumn("population", functions.col("population").cast("long"));
+                .withColumn("population", functions.col("population").cast("long"))
+                .withColumn("region", functions.split(functions.col("region"), "/").getItem(0)); // Removing part of the region name after the /
 
 
         //Create dataset from file parquet "somministrazione-vaccini-summary.parquet"
         Dataset<Row> vacc_summary = spark.read().parquet(vaccini_summary)
                 .toDF("date", "region", "num_vacc") // (date, region, vacc)
-                .where("date > '2020-12-26'");
+                .where("DATE(date) > DATE('2020-12-26')")
+                .withColumn("region", functions.split(functions.col("region"), "/").getItem(0)); // Removing part of the region name after the /
 
         vacc_summary.createOrReplaceTempView("summary");
 
@@ -85,9 +88,10 @@ public class Query3 {
                     List<Row> data = row.getList(1);
 
                     SimpleRegression reg = new SimpleRegression();
-                    data.forEach( x -> reg.addData(x.getLong(0), x.getLong(1)));
+                    data.iterator().forEachRemaining( y -> reg.addData(y.getLong(0)*1000, y.getLong(1)));
+                    // Date needs to be in milliseconds not seconds -> date*1000
 
-                    Long res = (long) reg.predict(tomorrow.getTime());
+                    Long res = (long)reg.predict(tomorrow.getTime());
 
                     return RowFactory.create(row.getString(0), year_month_day_format.format(tomorrow), res); // (region, tomorrow, predicted)
 
@@ -100,7 +104,8 @@ public class Query3 {
 
                     return RowFactory.create(row.getString(0), row.getString(1), percent); // (region, date, percent)
 
-                }, RowEncoder.apply(schema2));
+                }, RowEncoder.apply(schema2))
+                .orderBy("region"); // Ordering by region name
 
 
         VectorAssembler assembler = new VectorAssembler()
@@ -108,8 +113,6 @@ public class Query3 {
                 .setOutputCol("features");
 
         Dataset<Row> output = assembler.transform(predicted_dt);
-
-        output.show();
 
         if(algo == 1){
 
@@ -122,7 +125,7 @@ public class Query3 {
                     .transform(output) // predicting clusters
                     .select("date","region", "percent", "prediction"); // Selecting output data columns
 
-            bpredictions.repartition(1).write().mode(SaveMode.Overwrite).option("header", "true").csv(outputPath +"biseckmeans/");
+            bpredictions.repartition(1).write().mode(SaveMode.Overwrite).option("header", "true").csv(outputPath +"biseckmeans/" + k + "/");
         }
         else{
             // Trains a k-means model.
@@ -134,9 +137,8 @@ public class Query3 {
                     .transform(output)  // predicting clusters
                     .select("date","region", "percent", "prediction"); // Selecting output data columns
 
-            predictions.repartition(1).write().mode(SaveMode.Overwrite).option("header", "true").csv(outputPath +"kmeans/");
+            predictions.repartition(1).write().mode(SaveMode.Overwrite).option("header", "true").csv(outputPath +"kmeans/" + k + "/");
         }
-
 
         spark.close();
     }

@@ -1,5 +1,13 @@
 # SABD
-This project uses the Spark engine to analyze the data taken from the github repository of vaccinations in Italy against Covid 19 ([covid19-opendata-vaccini](https://github.com/italia/covid19-opendata-vaccini)).
+This project uses Spark engine to analyze the data taken from the github repository of vaccinations in Italy against Covid 19 ([covid19-opendata-vaccini](https://github.com/italia/covid19-opendata-vaccini)) in order to answer the following queries:
+
+<b>Query1</b> - mean number of vaccinations for a generic center for each region and each month
+
+<b>Query2</b> - for each month and age the top five regions which have been predicted to have the highest number of women vaccinated the first day of that month
+
+<b>Query3</b> - for each region predict the total number of vaccinations for the first day of June and classify them using K-means or Bisecting K-means as clustering algorithms
+
+The code for each of these queries can be found in src/main/java/queries, but you can also find alternative implementations for the second and third queries using SparkSQL in folder src/main/java/sql_queries. 
 
 ## Requirements
 This project uses docker and docker-compose to instantiate the HDFS, Spark, Nifi and Redis containers.
@@ -16,22 +24,20 @@ This project uses docker and docker-compose to instantiate the HDFS, Spark, Nifi
 
 ## Deployment
 
+Worker nodes for both spark and hdfs can be scaled as needed using docker-compose:
+
     docker-compose up --scale spark-worker=3 --scale datanode=4
 
-Using the docker-compose command you can scale worker nodes as you please. In this example a cluster with 3 spark workers and 4 hdfs datanodes will be created.
-
-Each of the systems provides its web ui accessible at:
-* http://localhost:9870 &nbsp;&nbsp;&nbsp; hdfs namenode
-* http://localhost:8080 &nbsp;&nbsp;&nbsp; spark master
-* http://localhost:9090 &nbsp;&nbsp;&nbsp; nifi
+e.g. cluster with 3 spark workers and 4 hdfs datanodes.
 
 ## Nifi configuration
-On the first deployment of the cluster you can import the templates to use in nifi saved in the folder:
+On the first deployment of the cluster you can import the templates to use in nifi saved in the folder /nifi/templates:
 
-    /nifi/templates
+* <b>input.xml</b> - takes data from the github repository and injects them into hdfs
+* <b>redis.xml</b> - takes data from hdfs and puts them in redis
 
 ## Query submission
-First create the jar needed for the submission of the query running the following command:
+Create the jar needed for the submission of the query:
 
     mvn package    
 
@@ -40,3 +46,10 @@ To submit a query to the spark cluster you can use the scripts in the folder /sc
     sh submit_query.sh 1
 
 The script takes one parameter specifying the query, e.g. 1 submits Query1.
+
+## Web UI
+
+* http://localhost:9870 &nbsp;&nbsp;&nbsp; hdfs namenode
+* http://localhost:8080 &nbsp;&nbsp;&nbsp; spark master
+* http://localhost:4040 &nbsp;&nbsp;&nbsp; spark application
+* http://localhost:9090 &nbsp;&nbsp;&nbsp; nifi
