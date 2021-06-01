@@ -86,15 +86,13 @@ public class Query2 {
 
                 }, RowEncoder.apply(schema));
 
-        prediction_dt.show();
-
         JavaPairRDD<Tuple3<String, String, Integer>, String> predict_rdd = prediction_dt
                 .toJavaRDD()
                 .mapToPair(
                         row ->
-                                new Tuple2<>(new Tuple2<>(row.getString(0), row.getString(2)), new Tuple2<>(row.getString(1), row.getInt(3))) // ((year_month, age),(region, num_women_vacc))
+                                new Tuple2<>(new Tuple2<>(row.getString(0), row.getString(2)), new Tuple2<>(row.getInt(3), row.getString(1))) // ((year_month, age),(num_women_vac, region))
                 )
-                .groupByKey()//((year_month, age), [](region, num_women_vacc))
+                .groupByKey()//((year_month, age), [](num_women_vacc, region))
                 .flatMapToPair(
                         x -> {
 
