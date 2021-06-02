@@ -1,9 +1,6 @@
 package sql_queries;
 
-import comparator.Tuple3Comparator;
-import org.apache.commons.collections.IteratorUtils;
 import org.apache.commons.math3.stat.regression.SimpleRegression;
-import org.apache.spark.api.java.JavaPairRDD;
 import org.apache.spark.api.java.function.FlatMapFunction;
 import org.apache.spark.api.java.function.MapFunction;
 import org.apache.spark.sql.*;
@@ -12,8 +9,6 @@ import org.apache.spark.sql.types.DataTypes;
 import org.apache.spark.sql.types.StructField;
 import org.apache.spark.sql.types.StructType;
 import scala.Tuple2;
-import scala.Tuple3;
-import scala.collection.TraversableOnce;
 
 import java.text.SimpleDateFormat;
 import java.util.*;
