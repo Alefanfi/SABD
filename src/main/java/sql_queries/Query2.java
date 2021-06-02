@@ -17,6 +17,7 @@ import java.util.*;
 public class Query2 {
 
     private static final String inputPath = "hdfs://namenode:9000/data/somministrazione-vaccini.parquet";
+    private static final String outputPath = "hdfs://namenode:9000/spark/sql-query2";
 
     public static void main(String[] args) {
 
@@ -24,7 +25,7 @@ public class Query2 {
 
         SparkSession spark = SparkSession
                 .builder()
-                .appName("Query2")
+                .appName(" SQL Query2")
                 .master("spark://spark:7077")
                 .getOrCreate();
 
@@ -90,11 +91,10 @@ public class Query2 {
                 }, RowEncoder.apply(schema))
                 .withColumn("value", functions.struct("predicted", "region")) // (date, region, age, predict, (predicted, age))
                 .groupBy("date", "age")
-                .agg(functions.collect_list("value"))
+                .agg(functions.collect_list("value")) // (date, age, [](predicted, age))
                 .flatMap((FlatMapFunction<Row, Row>) row ->{
 
                     List<Row> valueList = row.getList(2);
-
                     List<Tuple2<Integer, String>> scores = new ArrayList<>();
 
                     valueList.forEach(x -> scores.add(new Tuple2<>(x.getInt(0), x.getString(1))));
@@ -118,9 +118,10 @@ public class Query2 {
 
                     return newlist.iterator();
 
-                }, RowEncoder.apply(schema2)) ;
+                }, RowEncoder.apply(schema2))
+                .orderBy("date", "age", "predicted");
 
-        prediction_dt.show();
+        prediction_dt.repartition(1).write().mode(SaveMode.Overwrite).option("header", "true").csv(outputPath);
 
         spark.close();
     }
