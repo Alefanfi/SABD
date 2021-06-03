@@ -53,3 +53,8 @@ The script takes one parameter specifying the query, e.g. 1 submits Query1.
 * http://localhost:8080 &nbsp;&nbsp;&nbsp; spark master
 * http://localhost:4040 &nbsp;&nbsp;&nbsp; spark application
 * http://localhost:9090/nifi &nbsp;&nbsp;&nbsp; nifi
+
+## Visualize data
+You can visualize the data collected trough the Grafana dashboard using the following link ( shows the ranking for each region and the trend for each category using only the data from Lazio ):
+
+[SABD dashboard](https://lisa9601.grafana.net/dashboard/snapshot/j262Lw4iUP8ucMkrC7MvJtbhqX5878qx)
