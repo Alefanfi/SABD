@@ -47,7 +47,7 @@ To submit a query to the spark cluster you can use the scripts in the folder /sc
 
     sh submit-query.sh 3 0 4
 
-The first parameter specifies which query to submit, while other parameters are necessary only for query 3 and sql query 3 to specify algorithm and number of clusters.
+The first parameter specifies which query to submit, while other parameters are necessary only for query 3 and sql query 3 to specify algorithm (0 for k-means and 1 for bisecting k-means) and number of clusters.
 
 ## Web UI
 
